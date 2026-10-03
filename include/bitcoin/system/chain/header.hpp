@@ -152,6 +152,7 @@ protected:
     // error::insufficient_block_version
     // error::anachronistic_timestamp
     // error::incorrect_proof_of_work
+    // error::early_timestamp
 
 private:
     static header from_data(reader& source) NOEXCEPT;
