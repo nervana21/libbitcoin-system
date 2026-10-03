@@ -125,6 +125,13 @@ enum flags : uint32_t
     /// Reduces threshold segregated witness signaling (soft fork, feature).
     bip91_rule = bit_right<uint32_t>(25),
 
+    /// Bounds period start timestamps vs prior period end (soft fork, timewarp).
+    /// Caps legacy sigops at 2,500 per non-coinbase tx (soft fork, DoS).
+    /// Bans witness stripped txs of exactly 64 bytes (soft fork, merkle).
+    /// Enforces coinbase `locktime` equals height minus 1 and `sequence` not final
+    /// (soft fork, uniqueness).
+    bip54_rule = bit_right<uint32_t>(26),
+
     /// Testnet4 only
     time_warp_patch = bit_right<uint32_t>(27),
 

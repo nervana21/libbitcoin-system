@@ -681,6 +681,23 @@ BOOST_AUTO_TEST_CASE(chain_state__configured_flags__one_fork__one_rule)
     BOOST_REQUIRE_EQUAL(chain_state::configured_flags(forks), flags::bip16_rule);
 }
 
+BOOST_AUTO_TEST_CASE(chain_state__configured_flags__bip54_fork__bip54_rule)
+{
+    forks configured{};
+    configured.bip54 = true;
+    BOOST_REQUIRE(to_bool(
+        chain_state::configured_flags(configured) & flags::bip54_rule));
+}
+
+BOOST_AUTO_TEST_CASE(chain_state__configured_flags__bip54_off__no_rules)
+{
+    forks configured{};
+    configured.bip54 = false;
+    BOOST_REQUIRE(!to_bool(
+        chain_state::configured_flags(configured) & flags::bip54_rule));
+}
+
+
 // minimum_timespan/maximum_timespan
 // ----------------------------------------------------------------------------
 

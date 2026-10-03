@@ -51,6 +51,7 @@ settings::settings() NOEXCEPT
     forks.bip30_reactivate = true;
     forks.bip34 = true;
     forks.bip42 = true;
+    forks.bip54 = false;
     forks.bip65 = true;
     forks.bip66 = true;
     forks.bip68 = true;
@@ -127,6 +128,7 @@ settings::settings(chain::selection context) NOEXCEPT
             forks.bip30_reactivate = true;
             forks.bip34 = true;
             forks.bip42 = true;
+            forks.bip54 = false;                       // bip54 is inactive on mainnet
             forks.bip65 = true;
             forks.bip66 = true;
             forks.bip68 = true;
@@ -230,6 +232,7 @@ settings::settings(chain::selection context) NOEXCEPT
             forks.bip30_reactivate = true;
             forks.bip34 = true;
             forks.bip42 = true;
+            forks.bip54 = false;                       // bip54 is inactive on testnet3
             forks.bip65 = true;
             forks.bip66 = true;
             forks.bip68 = true;
@@ -321,6 +324,7 @@ settings::settings(chain::selection context) NOEXCEPT
             forks.bip30_reactivate = true;
             forks.bip34 = true;
             forks.bip42 = true;
+            forks.bip54 = false;                       // bip54 is inactive on testnet4
             forks.bip65 = true;
             forks.bip66 = true;
             forks.bip68 = true;
@@ -417,6 +421,7 @@ settings::settings(chain::selection context) NOEXCEPT
             forks.bip30_reactivate = true;
             forks.bip34 = true;
             forks.bip42 = true;
+            forks.bip54 = true;                        // bip54 is ACTIVE on regtest
             forks.bip65 = true;
             forks.bip66 = true;
             forks.bip68 = true;

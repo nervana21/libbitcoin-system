@@ -127,6 +127,8 @@ uint32_t chain_state::configured_flags(const forks& forks) NOEXCEPT
         result |= flags::bip34_rule;
     if (forks.bip42)
         result |= flags::bip42_rule;
+    if (forks.bip54)
+        result |= flags::bip54_rule;
     if (forks.bip65)
         result |= flags::bip65_rule;
     if (forks.bip66)
@@ -193,6 +195,12 @@ chain_state::activations chain_state::activation(const data& values,
     if (forks.bip42)
     {
         result.flags |= flags::bip42_rule;
+    }
+
+    // `bip54` is activated based on configuration alone (soft fork).
+    if (forks.bip54)
+    {
+        result.flags |= flags::bip54_rule;
     }
 
     // bip90 is activated based on configuration alone (hard fork).
