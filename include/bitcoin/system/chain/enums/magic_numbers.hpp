@@ -64,6 +64,8 @@ constexpr size_t invalid_nonwitness_tx_size = 64;
 /// BIP54 timewarp grace, 7200 seconds.
 constexpr size_t max_timewarp_bip54 = 2 * 60 * 60;
 constexpr size_t max_timewarp_testnet4 = 600;
+/// BIP54 per-transaction legacy (non-witness) sigops limit.
+constexpr size_t max_tx_bip54_sigops = 2'500;
 constexpr uint64_t satoshi_per_bitcoin = 100'000'000;
 
 /// Relative locktime consensus constants.

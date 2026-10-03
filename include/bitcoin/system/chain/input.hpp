@@ -112,6 +112,11 @@ public:
     /// Assumes coinbase if prevout not populated (returns only legacy sigops).
     size_t signature_operations(bool bip16, bool bip141) const NOEXCEPT;
 
+    /// Counts BIP54 legacy signature operations for this input.
+    /// Counts accurate scriptSig sigops plus the spent scriptPubKey (bare) or
+    /// P2SH redeem. Does not count outputs or witness.
+    size_t bip54_signature_operations() const NOEXCEPT;
+
     /// Requires metadata.prevout_height and median_time_past (otherwise true).
     bool is_relative_locked(size_t height,
         uint32_t median_time_past) const NOEXCEPT;

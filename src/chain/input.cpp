@@ -438,6 +438,33 @@ size_t input::signature_operations(bool bip16, bool bip141) const NOEXCEPT
     return sigops;
 }
 
+size_t input::bip54_signature_operations() const NOEXCEPT
+{
+    // Count accurate sigops in the input script.
+    const size_t sigops = script_->signature_operations(true);
+
+    // No prevout populated, so only the scriptSig is counted.
+    if (!prevout)
+        return sigops;
+
+    if (script::is_pay_script_hash_pattern(prevout->script().ops()))
+    {
+        // Underflow. Count stays on the scriptSig (no redeem walk).
+        if (script_->is_underflow())
+            return sigops;
+
+        // Add accurate sigops in the redeem script (last scriptSig push).
+        chain::script embedded;
+        if (script_->extract_sigop_script(embedded, prevout->script()))
+            return ceilinged_add(sigops, embedded.signature_operations(true));
+
+        return sigops;
+    }
+
+    // Bare spend: add accurate sigops in the spent scriptPubKey.
+    return ceilinged_add(sigops, prevout->script().signature_operations(true));
+}
+
 BC_POP_WARNING()
 
 } // namespace chain
