@@ -380,7 +380,9 @@ code header::accept(const context& ctx,
         return error::anachronistic_timestamp;
     if (ctx.is_invalid_work(bits_))
         return error::incorrect_proof_of_work;
-    if (ctx.is_early_timestamp(retargeting_interval))
+    // Pass this header's time so a stale/mismatched `ctx.timestamp` cannot
+    // skip BIP54 timewarp protection.
+    if (ctx.is_early_timestamp(timestamp_, retargeting_interval))
         return error::early_timestamp;
 
     return error::block_success;

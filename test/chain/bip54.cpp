@@ -53,6 +53,11 @@ data_chunk decode_hex_chunk(const std::string& hex)
     return out;
 }
 
+header decode_header(const std::string& hex)
+{
+    return header{ decode_hex_chunk(hex) };
+}
+
 transaction decode_tx(const std::string& hex)
 {
     return transaction{ decode_hex_chunk(hex), true };
@@ -87,6 +92,83 @@ BOOST_AUTO_TEST_CASE(bip54__configured_flags__bip54_off__clear)
     configured.bip54 = false;
     BOOST_REQUIRE(!to_bool(
         chain_state::configured_flags(configured) & flags::bip54_rule));
+}
+
+BOOST_AUTO_TEST_CASE(bip54__early_timestamp__bip54_grace_7200)
+{
+    constexpr auto prev = 10'000u;
+    constexpr auto limit = possible_narrow_cast<uint32_t>(
+        prev - max_timewarp_bip54);
+    context ctx{ flags::bip54_rule, sub1(limit), 0, 2016, 0, 0, prev };
+    BOOST_REQUIRE(ctx.is_early_timestamp(2016));
+
+    ctx.timestamp = limit;
+    BOOST_REQUIRE(!ctx.is_early_timestamp(2016));
+}
+
+BOOST_AUTO_TEST_CASE(bip54__early_timestamp__bip94_and_bip54__tighter_grace)
+{
+    constexpr auto prev = 1'000'000u;
+    constexpr auto retargeting_interval = 4u;
+    context both
+    {
+        flags::bip54_rule | flags::time_warp_patch,
+        0u, 0u, retargeting_interval, 0u, 0u, prev
+    };
+
+    BOOST_REQUIRE(both.is_early_timestamp(
+        prev - max_timewarp_testnet4 - 1u, retargeting_interval));
+    BOOST_REQUIRE(!both.is_early_timestamp(
+        prev - max_timewarp_testnet4, retargeting_interval));
+}
+
+BOOST_AUTO_TEST_CASE(bip54__testnet3_timewarp_pin__bip54_rejects)
+{
+    // BIP54 README testnet3 timewarp pin. Height 8064 is the period start.
+    // The previous header supplies previous_timestamp. This is not Core's
+    // regtest BIP94 short-period harness.
+    constexpr auto tip_hash =
+        "00000000118da1e2165a19307b86f87eba814845e8a0f99734dce279ca3fb029";
+    constexpr size_t tip_height = 8064;
+    constexpr auto prev_hex =
+        "01000000018e9da3242e84256c2605065e79241810915244a31015b8d9e93d6200000000d3ebb7200f444512b7f3c983224ed29db1e434f6d5b90e130a874fccc40f1d4ffbd70c50f0ff0f1c011c4aeb";
+    constexpr auto tip_hex =
+        "01000000d5be886aabaff7ec7a48d67cbef287228219289e2b0446f2799c9c0a000000001445b86a883acddb79b0c566a7750ca3f1ff2645e21bfbb7be6b1fc98be8e5384a05c34fc0ff3f1c11336d5b";
+
+    const auto prev = decode_header(prev_hex);
+    const auto tip = decode_header(tip_hex);
+    BOOST_REQUIRE_EQUAL(encode_hash(tip.hash()), tip_hash);
+    BOOST_REQUIRE_EQUAL(encode_hash(tip.previous_block_hash()),
+        encode_hash(prev.hash()));
+
+    settings cfg{ selection::testnet3 };
+    cfg.forks.bip54 = true;
+    const auto retargeting_interval = possible_narrow_cast<uint32_t>(
+        cfg.retargeting_interval());
+    BOOST_REQUIRE_EQUAL(retargeting_interval, 2016u);
+    BOOST_REQUIRE(is_zero(tip_height % retargeting_interval));
+
+    context on{};
+    on.flags = chain_state::configured_flags(cfg.forks);
+    on.height = tip_height;
+    on.timestamp = tip.timestamp();
+    on.previous_timestamp = prev.timestamp();
+    on.work_required = tip.bits();
+    on.minimum_block_version = 0;
+    on.median_time_past = 0;
+
+    BOOST_REQUIRE(to_bool(on.flags & flags::bip54_rule));
+    BOOST_REQUIRE(on.is_early_timestamp(tip.timestamp(),
+        retargeting_interval));
+    BOOST_REQUIRE_EQUAL(tip.accept(on, retargeting_interval),
+        error::early_timestamp);
+
+    context off = on;
+    off.flags = flags::no_rules;
+    BOOST_REQUIRE(!off.is_early_timestamp(tip.timestamp(),
+        retargeting_interval));
+    BOOST_REQUIRE(tip.accept(off, retargeting_interval) !=
+        error::early_timestamp);
 }
 
 BOOST_AUTO_TEST_CASE(bip54__sigops_vectors__match_expected)

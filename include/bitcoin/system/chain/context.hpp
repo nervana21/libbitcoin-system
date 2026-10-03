@@ -57,13 +57,31 @@ public:
         return bits != work_required;
     }
 
-    // Testnet4 / BIP94 specific (the block's timestamp is too early on
-    // difficulty adjustment block).
+    // Returns true when the first block of a difficulty period has a timestamp
+    // earlier than the previous block (prior period end, T_{N-1}) minus the active
+    // timewarp grace. BIP94 timewarp grace is 600s. BIP54 timewarp grace is 7200s. 
+    // If both are active, the stricter BIP94 timewarp grace is used.
+    inline bool is_early_timestamp(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
+    {
+        if (is_zero(retargeting_interval) ||
+            is_nonzero(height % retargeting_interval))
+            return false;
+
+        size_t grace{};
+        if (is_enabled(chain::flags::time_warp_patch))
+            grace = max_timewarp_testnet4;
+        else if (is_enabled(chain::flags::bip54_rule))
+            grace = max_timewarp_bip54;
+        if (is_zero(grace))
+            return false;
+
+        return block_timestamp < floored_subtract(previous_timestamp, grace);
+    }
+
     inline bool is_early_timestamp(uint32_t retargeting_interval) const NOEXCEPT
     {
-        return is_enabled(chain::flags::time_warp_patch)
-            && is_zero(height % retargeting_interval)
-            && (timestamp < floored_subtract(previous_timestamp, max_timewarp_testnet4));
+        return is_early_timestamp(timestamp, retargeting_interval);
     }
 
     /// Header context within chain.
