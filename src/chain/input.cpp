@@ -438,6 +438,31 @@ size_t input::signature_operations(bool bip16, bool bip141) const NOEXCEPT
     return sigops;
 }
 
+size_t input::bip54_signature_operations() const NOEXCEPT
+{
+    const size_t sigops = script_->signature_operations(true);
+
+    if (!prevout)
+        return sigops;
+
+    // P2SH. Underflow `scriptSig` must not treat truncated push data as redeem.
+    // `extract_sigop_script` already rejects bad pushes. Keep this check so a
+    // future extract change cannot over count and reject BIP54 valid spends.
+    if (script::is_pay_script_hash_pattern(prevout->script().ops()))
+    {
+        if (script_->is_underflow())
+            return sigops;
+
+        chain::script embedded;
+        if (script_->extract_sigop_script(embedded, prevout->script()))
+            return ceilinged_add(sigops, embedded.signature_operations(true));
+
+        return sigops;
+    }
+
+    return ceilinged_add(sigops, prevout->script().signature_operations(true));
+}
+
 BC_POP_WARNING()
 
 } // namespace chain

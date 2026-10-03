@@ -149,6 +149,9 @@ public:
     /// Assumes coinbase if prevout not populated (returns only legacy sigops).
     size_t signature_operations(bool bip16, bool bip141) const NOEXCEPT;
 
+    /// Counts BIP54 legacy signature operations across all inputs (no witness).
+    size_t bip54_signature_operations() const NOEXCEPT;
+
     /// signature_hash exposed for op_check_multisig caching.
     bool signature_hash(hash_digest& out, const input_iterator& input,
         const script& subscript, uint64_t value, const hash_cptr& tapleaf,

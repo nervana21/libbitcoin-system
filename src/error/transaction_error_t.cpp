@@ -54,7 +54,10 @@ DEFINE_ERROR_T_MESSAGE_MAP(transaction_error)
 
     // confirm transaction
     { unconfirmed_spend, "spend of unconfirmed previous output" },
-    { confirmed_double_spend, "spend of confirmed spent previous output" }
+    { confirmed_double_spend, "spend of confirmed spent previous output" },
+
+    // BIP54
+    { bip54_sigop_limit, "too many BIP54 legacy signature operations" }
 };
 
 DEFINE_ERROR_T_CATEGORY(transaction_error, "transaction", "transaction code")
