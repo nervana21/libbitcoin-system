@@ -106,4 +106,33 @@ BOOST_AUTO_TEST_CASE(context__is_early_timestamp__floored_previous__false)
     BOOST_REQUIRE(!instance.is_early_timestamp(2016));
 }
 
+BOOST_AUTO_TEST_CASE(context__is_early_timestamp__bip54_grace__true)
+{
+    constexpr auto prev = 10'000u;
+    constexpr auto limit = possible_narrow_cast<uint32_t>(
+        prev - max_timewarp_bip54);
+    context instance{ flags::bip54_rule, sub1(limit), 0, 2016, 0, 0, prev, 0 };
+    BOOST_REQUIRE(instance.is_early_timestamp(2016));
+
+    instance.timestamp = limit;
+    BOOST_REQUIRE(!instance.is_early_timestamp(2016));
+}
+
+BOOST_AUTO_TEST_CASE(context__is_early_timestamp__bip54_and_bip94__tighter)
+{
+    constexpr auto prev = 1'000'000u;
+    constexpr auto retargeting_interval = 4u;
+    const context both
+    {
+        flags::bip54_rule | flags::time_warp_patch,
+        0u, 0u, retargeting_interval, 0u, 0u, prev
+    };
+
+    BOOST_REQUIRE(both.is_early_timestamp(
+        prev - max_timewarp_testnet4 - 1u, retargeting_interval));
+    BOOST_REQUIRE(!both.is_early_timestamp(
+        prev - max_timewarp_testnet4, retargeting_interval));
+}
+
+
 BOOST_AUTO_TEST_SUITE_END()

@@ -99,6 +99,9 @@
     <ClCompile Include="..\..\..\..\test\chain\annex.cpp" />
     <ClCompile Include="..\..\..\..\test\chain\batch\signatures.cpp" />
     <ClCompile Include="..\..\..\..\test\chain\batch\threshold.cpp" />
+    <ClCompile Include="..\..\..\..\test\chain\bip54.cpp">
+      <ObjectFileName>$(IntDir)test_chain_bip54.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="..\..\..\..\test\chain\block.cpp">
       <ObjectFileName>$(IntDir)test_chain_block.obj</ObjectFileName>
     </ClCompile>

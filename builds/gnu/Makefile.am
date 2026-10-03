@@ -1124,6 +1124,7 @@ test_libbitcoin_system_test_SOURCES = \
     ${srcdir}/../../test/typelets.cpp \
     ${srcdir}/../../test/types.cpp \
     ${srcdir}/../../test/chain/annex.cpp \
+    ${srcdir}/../../test/chain/bip54.cpp \
     ${srcdir}/../../test/chain/block.cpp \
     ${srcdir}/../../test/chain/block_malleable.cpp \
     ${srcdir}/../../test/chain/chain_state.cpp \
