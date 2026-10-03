@@ -968,6 +968,17 @@ code transaction::check(const context& ctx) const NOEXCEPT
     if (bip54 && serialized_size(false) == invalid_nonwitness_tx_size)
         return error::invalid_tx_size_64;
 
+    // BIP54: coinbase timelock must be height-1 with a non-final sequence.
+    // Height 0 (genesis) is exempt.
+    if (bip54 && is_coinbase() && is_nonzero(ctx.height))
+    {
+        if (locktime_ != sub1(ctx.height))
+            return error::invalid_coinbase_locktime;
+        if (inputs_->empty() ||
+            inputs_->front()->sequence() == max_input_sequence)
+            return error::invalid_coinbase_sequence;
+    }
+
     if (is_absolute_locked(ctx.height, ctx.timestamp, ctx.median_time_past, bip113))
         return error::absolute_time_locked;
 

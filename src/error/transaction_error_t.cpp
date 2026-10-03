@@ -57,7 +57,9 @@ DEFINE_ERROR_T_MESSAGE_MAP(transaction_error)
     { confirmed_double_spend, "spend of confirmed spent previous output" },
 
     // BIP54
-    { invalid_tx_size_64, "witness-stripped transaction size is exactly 64 bytes" }
+    { invalid_tx_size_64, "witness-stripped transaction size is exactly 64 bytes" },
+    { invalid_coinbase_locktime, "coinbase locktime must be height minus one" },
+    { invalid_coinbase_sequence, "coinbase sequence must not be final" }
 };
 
 DEFINE_ERROR_T_CATEGORY(transaction_error, "transaction", "transaction code")

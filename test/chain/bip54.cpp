@@ -62,6 +62,11 @@ transaction decode_tx(const std::string& hex)
     return transaction{ decode_hex_chunk(hex), true };
 }
 
+block decode_block(const std::string& hex)
+{
+    return block{ decode_hex_chunk(hex), true };
+}
+
 bool bip54_timestamps_ok(const std::vector<header>& headers,
     size_t retargeting_interval) NOEXCEPT
 {
@@ -228,6 +233,67 @@ BOOST_AUTO_TEST_CASE(bip54__txsize_vectors__match_expected)
         else
             BOOST_REQUIRE_EQUAL(ec, error::invalid_tx_size_64);
     }
+}
+
+BOOST_AUTO_TEST_CASE(bip54__coinbases_vectors__match_expected)
+{
+    const auto root = load_json("coinbases.json");
+    size_t index{};
+    for (const auto& case_: root.as_array())
+    {
+        ++index;
+        const auto& chain = case_.at("block_chain").as_array();
+        BOOST_REQUIRE(!chain.empty());
+
+        const auto height = sub1(chain.size());
+        auto blk = decode_block(std::string(chain.back().as_string()));
+        BOOST_REQUIRE(!blk.transactions_ptr()->empty());
+
+        context ctx{};
+        ctx.flags = flags::bip54_rule;
+        ctx.height = height;
+
+        const auto& coinbase = *blk.transactions_ptr()->front();
+        const auto ec = coinbase.check(ctx);
+        const auto expected = case_.at("valid").as_bool();
+        if (expected)
+            BOOST_REQUIRE_MESSAGE(ec == error::transaction_success,
+                "coinbase case " + std::to_string(index) + ": " +
+                std::string(case_.at("comment").as_string()));
+        else
+            BOOST_REQUIRE_MESSAGE(
+                ec == error::invalid_coinbase_locktime ||
+                ec == error::invalid_coinbase_sequence,
+                "coinbase case " + std::to_string(index) + ": " +
+                std::string(case_.at("comment").as_string()) +
+                " ec=" + ec.message());
+    }
+}
+
+// edges
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(bip54__coinbase__height_zero_and_flag_off__skip)
+{
+    constexpr auto h = 100u;
+    const transaction unlocked
+    {
+        1u,
+        inputs{ input{ point{}, script{}, max_input_sequence } },
+        outputs{ output{ 0u, script{} } },
+        static_cast<uint32_t>(h)
+    };
+    BOOST_REQUIRE(unlocked.is_coinbase());
+
+    context genesis{};
+    genesis.flags = flags::bip54_rule;
+    genesis.height = 0;
+    BOOST_REQUIRE_EQUAL(unlocked.check(genesis), error::transaction_success);
+
+    context off{};
+    off.flags = flags::no_rules;
+    off.height = h;
+    BOOST_REQUIRE_EQUAL(unlocked.check(off), error::transaction_success);
 }
 
 // integration
@@ -433,6 +499,50 @@ BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_size_64_on__invalid_tx_s
 
     const auto on = bip54_ctx(true, 1u);
     BOOST_REQUIRE_EQUAL(cb.check(on), error::invalid_tx_size_64);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_lock_off__success)
+{
+    constexpr auto height = 100u;
+    const auto unlocked = make_bad_locktime_coinbase(height);
+    BOOST_REQUIRE(unlocked.is_coinbase());
+    BOOST_REQUIRE(unlocked.serialized_size(false) != invalid_nonwitness_tx_size);
+
+    const auto off = bip54_ctx(false, height);
+    BOOST_REQUIRE_EQUAL(unlocked.check(off), error::transaction_success);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_lock_on__invalid_coinbase_locktime)
+{
+    constexpr auto height = 100u;
+    const auto unlocked = make_bad_locktime_coinbase(height);
+    BOOST_REQUIRE(unlocked.is_coinbase());
+    BOOST_REQUIRE(unlocked.serialized_size(false) != invalid_nonwitness_tx_size);
+
+    const auto on = bip54_ctx(true, height);
+    BOOST_REQUIRE_EQUAL(unlocked.check(on), error::invalid_coinbase_locktime);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_sequence_off__success)
+{
+    constexpr auto height = 100u;
+    const auto final_seq = make_final_sequence_coinbase(height);
+    BOOST_REQUIRE(final_seq.is_coinbase());
+    BOOST_REQUIRE(final_seq.serialized_size(false) != invalid_nonwitness_tx_size);
+
+    const auto off = bip54_ctx(false, height);
+    BOOST_REQUIRE_EQUAL(final_seq.check(off), error::transaction_success);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_sequence_on__invalid_coinbase_sequence)
+{
+    constexpr auto height = 100u;
+    const auto final_seq = make_final_sequence_coinbase(height);
+    BOOST_REQUIRE(final_seq.is_coinbase());
+    BOOST_REQUIRE(final_seq.serialized_size(false) != invalid_nonwitness_tx_size);
+
+    const auto on = bip54_ctx(true, height);
+    BOOST_REQUIRE_EQUAL(final_seq.check(on), error::invalid_coinbase_sequence);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
