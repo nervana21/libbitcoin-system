@@ -57,7 +57,9 @@ DEFINE_ERROR_T_MESSAGE_MAP(transaction_error)
     { confirmed_double_spend, "spend of confirmed spent previous output" },
 
     // BIP54
-    { bip54_sigop_limit, "too many BIP54 legacy signature operations" }
+    { bip54_sigop_limit, "too many BIP54 legacy signature operations" },
+    { invalid_coinbase_locktime, "coinbase locktime must be height minus one" },
+    { invalid_coinbase_sequence, "coinbase sequence must not be final" }
 };
 
 DEFINE_ERROR_T_CATEGORY(transaction_error, "transaction", "transaction code")

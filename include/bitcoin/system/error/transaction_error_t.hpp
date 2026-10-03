@@ -64,6 +64,8 @@ enum transaction_error_t
 
     // BIP54
     bip54_sigop_limit,
+    invalid_coinbase_locktime,
+    invalid_coinbase_sequence,
 
     // chained to script_error_t
     tx_error_last

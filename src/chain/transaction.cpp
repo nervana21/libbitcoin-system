@@ -971,7 +971,19 @@ code transaction::check() const NOEXCEPT
 // DO invoke on coinbase.
 code transaction::check(const context& ctx) const NOEXCEPT
 {
+    const auto bip54 = ctx.is_enabled(bip54_rule);
     const auto bip113 = ctx.is_enabled(bip113_rule);
+
+    // BIP54: coinbase timelock must be height-1 with a non-final sequence.
+    // Genesis exempt.
+    if (bip54 && is_coinbase() && is_nonzero(ctx.height))
+    {
+        if (locktime_ != sub1(ctx.height))
+            return error::invalid_coinbase_locktime;
+        if (inputs_->empty() ||
+            inputs_->front()->sequence() == max_input_sequence)
+            return error::invalid_coinbase_sequence;
+    }
 
     if (is_absolute_locked(ctx.height, ctx.timestamp, ctx.median_time_past, bip113))
         return error::absolute_time_locked;
