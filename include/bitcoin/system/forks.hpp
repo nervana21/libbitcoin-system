@@ -66,6 +66,9 @@ struct forks
     /////// bip9 bit4 activation group ("segsignal").
     ////bool bip91;
 
+    /// Config-activated consensus cleanup.
+    bool bip54;
+
     /// Regtest does not retarget.
     bool retarget;
 

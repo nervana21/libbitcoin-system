@@ -73,6 +73,9 @@ enum block_error_t : uint8_t
     // confirm block
     unspent_coinbase_collision,
 
+    // BIP54 Murch-Zawy
+    negative_interval,
+
     // not currently used
     block_error_last
 };

@@ -113,6 +113,9 @@
     <ClCompile Include="..\..\..\..\test\chain\context.cpp">
       <ObjectFileName>$(IntDir)test_chain_context.obj</ObjectFileName>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\test\chain\bip54.cpp">
+      <ObjectFileName>$(IntDir)test_chain_bip54.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="..\..\..\..\test\chain\enums\opcode.cpp" />
     <ClCompile Include="..\..\..\..\test\chain\header.cpp">
       <ObjectFileName>$(IntDir)test_chain_header.obj</ObjectFileName>
