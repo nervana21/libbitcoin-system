@@ -20,6 +20,7 @@
 
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <filesystem>
 #include <random>
 #include <boost/json.hpp>
@@ -473,6 +474,50 @@ BOOST_AUTO_TEST_CASE(bip54__coinbase__height_zero_and_flag_off__skip)
     off.flags = flags::no_rules;
     off.height = h;
     BOOST_REQUIRE_EQUAL(unlocked.check(off), error::transaction_success);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__e2e__flag_gates_block_rules_pool_always_on)
+{
+    const auto txsize = load_json("txsize.json");
+    std::optional<transaction> bad64;
+    for (const auto& case_: txsize.as_array())
+    {
+        if (!case_.at("valid").as_bool())
+        {
+            bad64 = decode_tx(std::string(case_.at("tx").as_string()));
+            break;
+        }
+    }
+    BOOST_REQUIRE(bad64.has_value());
+
+    operations bomb;
+    bomb.reserve(max_tx_bip54_sigops + 1);
+    for (size_t n = 0; n <= max_tx_bip54_sigops; ++n)
+        bomb.emplace_back(opcode::checksig);
+    input over_in{ point{ null_hash, 0u }, script{}, 0xffffffff };
+    over_in.prevout = to_shared<output>(1_u64, script{ bomb });
+    transaction over
+    {
+        1u,
+        inputs{ std::move(over_in) },
+        outputs{ output{ 1_u64, script{} } },
+        0u
+    };
+    BOOST_REQUIRE(over.bip54_signature_operations() > max_tx_bip54_sigops);
+
+    context off{};
+    off.flags = flags::no_rules;
+    BOOST_REQUIRE_EQUAL(bad64->check(off), error::transaction_success);
+    BOOST_REQUIRE_EQUAL(over.accept(off), error::transaction_success);
+    BOOST_REQUIRE_EQUAL(bad64->check_guard(off), error::invalid_tx_size_64);
+    BOOST_REQUIRE_EQUAL(over.accept_guard(off), error::bip54_sigop_limit);
+
+    context on{};
+    on.flags = flags::bip54_rule;
+    BOOST_REQUIRE_EQUAL(bad64->check(on), error::invalid_tx_size_64);
+    BOOST_REQUIRE_EQUAL(over.accept(on), error::bip54_sigop_limit);
+    BOOST_REQUIRE_EQUAL(bad64->check_guard(on), error::invalid_tx_size_64);
+    BOOST_REQUIRE_EQUAL(over.accept_guard(on), error::bip54_sigop_limit);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

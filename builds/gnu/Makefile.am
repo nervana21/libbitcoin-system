@@ -1130,6 +1130,7 @@ test_libbitcoin_system_test_SOURCES = \
     ${srcdir}/../../test/chain/compact.cpp \
     ${srcdir}/../../test/chain/context.cpp \
     ${srcdir}/../../test/chain/bip54.cpp \
+    ${srcdir}/../../test/chain/bip54_feature.cpp \
     ${srcdir}/../../test/chain/header.cpp \
     ${srcdir}/../../test/chain/input.cpp \
     ${srcdir}/../../test/chain/operation.cpp \
