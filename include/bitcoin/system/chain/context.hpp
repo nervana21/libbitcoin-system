@@ -63,7 +63,7 @@ public:
     {
         return is_enabled(chain::flags::time_warp_patch)
             && is_zero(height % retargeting_interval)
-            && (timestamp < floored_subtract(previous_timestamp, max_timewarp));
+            && (timestamp < floored_subtract(previous_timestamp, max_timewarp_testnet4));
     }
 
     /// Header context within chain.
