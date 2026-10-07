@@ -57,6 +57,11 @@ header decode_header(const std::string& hex)
     return header{ decode_hex_chunk(hex) };
 }
 
+transaction decode_tx(const std::string& hex)
+{
+    return transaction{ decode_hex_chunk(hex), true };
+}
+
 bool bip54_timestamps_ok(const std::vector<header>& headers,
     size_t retargeting_interval) NOEXCEPT
 {
@@ -125,6 +130,58 @@ void collect_timestamp_cases(const json::value& node,
     });
 }
 
+transaction make_coinbase(uint32_t locktime, uint32_t sequence,
+    const data_chunk& script_sig = {})
+{
+    const auto bytes = script_sig.empty() ?
+        data_chunk{ 0x00, 0x00 } : script_sig;
+    return transaction
+    {
+        1u,
+        inputs{ input{ point{}, script{ bytes, false }, sequence } },
+        outputs{ output{ 0u, script{} } },
+        locktime
+    };
+}
+
+transaction make_bad_locktime_coinbase(size_t height)
+{
+    return make_coinbase(static_cast<uint32_t>(height), max_input_sequence);
+}
+
+transaction make_final_sequence_coinbase(size_t height)
+{
+    return make_coinbase(static_cast<uint32_t>(sub1(height)),
+        max_input_sequence);
+}
+
+transaction make_64byte_coinbase()
+{
+    return make_coinbase(0u, max_input_sequence,
+        data_chunk{ 0x00, 0x00, 0x00, 0x00 });
+}
+
+context bip54_ctx(bool on, size_t height = 0) NOEXCEPT
+{
+    context ctx{};
+    ctx.flags = on ? flags::bip54_rule : flags::no_rules;
+    ctx.height = height;
+    return ctx;
+}
+
+transaction load_bad64_tx()
+{
+    const auto root = load_json("txsize.json");
+    for (const auto& case_: root.as_array())
+    {
+        if (!case_.at("valid").as_bool())
+            return decode_tx(std::string(case_.at("tx").as_string()));
+    }
+
+    BOOST_REQUIRE(false);
+    return {};
+}
+
 } // namespace
 
 // vectors
@@ -145,6 +202,31 @@ BOOST_AUTO_TEST_CASE(bip54__timestamps_vectors__match_expected)
             retargeting_interval);
         BOOST_REQUIRE_MESSAGE(ok == case_.valid,
             "timestamps case " + std::to_string(index) + ": " + case_.comment);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(bip54__txsize_vectors__match_expected)
+{
+    const auto root = load_json("txsize.json");
+    size_t index{};
+    for (const auto& case_: root.as_array())
+    {
+        ++index;
+        auto tx = decode_tx(std::string(case_.at("tx").as_string()));
+        const auto size64 = tx.serialized_size(false) ==
+            invalid_nonwitness_tx_size;
+        const auto expected = case_.at("valid").as_bool();
+        BOOST_REQUIRE_MESSAGE((!size64) == expected,
+            "txsize case " + std::to_string(index) + ": " +
+            std::string(case_.at("comment").as_string()));
+
+        context ctx{};
+        ctx.flags = flags::bip54_rule;
+        const auto ec = tx.check(ctx);
+        if (expected)
+            BOOST_REQUIRE_EQUAL(ec, error::transaction_success);
+        else
+            BOOST_REQUIRE_EQUAL(ec, error::invalid_tx_size_64);
     }
 }
 
@@ -310,6 +392,47 @@ BOOST_AUTO_TEST_CASE(bip54__header_accept__stale_ctx_negative_period_on__negativ
     BOOST_REQUIRE(on.is_negative_period_duration(attack, retargeting_interval));
     BOOST_REQUIRE_EQUAL(attack_header.accept(on, retargeting_interval),
         error::negative_period_duration);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__tx_size_64_off__success)
+{
+    auto bad64 = load_bad64_tx();
+    BOOST_REQUIRE_EQUAL(bad64.serialized_size(false), invalid_nonwitness_tx_size);
+
+    const auto off = bip54_ctx(false);
+    BOOST_REQUIRE_EQUAL(bad64.check(off), error::transaction_success);
+    BOOST_REQUIRE_EQUAL(bad64.check_guard(off), error::invalid_tx_size_64);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__tx_size_64_on__invalid_tx_size_64)
+{
+    auto bad64 = load_bad64_tx();
+    BOOST_REQUIRE_EQUAL(bad64.serialized_size(false), invalid_nonwitness_tx_size);
+
+    const auto on = bip54_ctx(true);
+    BOOST_REQUIRE_EQUAL(bad64.check(on), error::invalid_tx_size_64);
+    BOOST_REQUIRE_EQUAL(bad64.check_guard(on), error::invalid_tx_size_64);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_size_64_off__success)
+{
+    auto cb = make_64byte_coinbase();
+    BOOST_REQUIRE(cb.is_coinbase());
+    BOOST_REQUIRE_EQUAL(cb.serialized_size(false), invalid_nonwitness_tx_size);
+
+    const auto off = bip54_ctx(false, 1u);
+    BOOST_REQUIRE_EQUAL(cb.check(off), error::transaction_success);
+    BOOST_REQUIRE_EQUAL(cb.check_guard(off), error::invalid_tx_size_64);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__transaction_check__coinbase_size_64_on__invalid_tx_size_64)
+{
+    auto cb = make_64byte_coinbase();
+    BOOST_REQUIRE(cb.is_coinbase());
+    BOOST_REQUIRE_EQUAL(cb.serialized_size(false), invalid_nonwitness_tx_size);
+
+    const auto on = bip54_ctx(true, 1u);
+    BOOST_REQUIRE_EQUAL(cb.check(on), error::invalid_tx_size_64);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

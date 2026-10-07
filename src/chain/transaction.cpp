@@ -893,6 +893,11 @@ code transaction::check_guard(const context& ctx) const NOEXCEPT
      if (bip141 && is_overweight())
         return error::transaction_weight_limit;
 
+    // Pool always rejects witness-stripped size of exactly 64 bytes.
+    // Block `check` stays gated on `bip54_rule`.
+    if (serialized_size(false) == invalid_nonwitness_tx_size)
+        return error::invalid_tx_size_64;
+
     return error::transaction_success;
 }
 
@@ -956,7 +961,12 @@ code transaction::check() const NOEXCEPT
 // DO invoke on coinbase.
 code transaction::check(const context& ctx) const NOEXCEPT
 {
+    const auto bip54 = ctx.is_enabled(bip54_rule);
     const auto bip113 = ctx.is_enabled(bip113_rule);
+
+    // BIP54: reject witness-stripped transaction size of exactly 64 bytes.
+    if (bip54 && serialized_size(false) == invalid_nonwitness_tx_size)
+        return error::invalid_tx_size_64;
 
     if (is_absolute_locked(ctx.height, ctx.timestamp, ctx.median_time_past, bip113))
         return error::absolute_time_locked;

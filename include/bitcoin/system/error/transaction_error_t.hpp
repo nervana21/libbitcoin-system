@@ -62,6 +62,9 @@ enum transaction_error_t
     unconfirmed_spend,
     confirmed_double_spend,
 
+    // BIP54
+    invalid_tx_size_64,
+
     // chained to script_error_t
     tx_error_last
 };
