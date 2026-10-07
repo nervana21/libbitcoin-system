@@ -58,6 +58,7 @@ DEFINE_ERROR_T_MESSAGE_MAP(transaction_error)
 
     // BIP54
     { bip54_sigop_limit, "too many BIP54 legacy signature operations" },
+    { invalid_tx_size_64, "transaction witness-stripped size is exactly 64 bytes" },
     { invalid_coinbase_locktime, "coinbase locktime must be height minus one" },
     { invalid_coinbase_sequence, "coinbase sequence must not be final" }
 };

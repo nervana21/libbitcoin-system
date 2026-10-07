@@ -64,6 +64,7 @@ enum transaction_error_t
 
     // BIP54
     bip54_sigop_limit,
+    invalid_tx_size_64,
     invalid_coinbase_locktime,
     invalid_coinbase_sequence,
 

@@ -903,6 +903,10 @@ code transaction::check_guard(const context& ctx) const NOEXCEPT
      if (bip141 && is_overweight())
         return error::transaction_weight_limit;
 
+    // Always reject size 64 for pool. Block check stays gated on `bip54_rule`.
+    if (serialized_size(false) == invalid_tx_nonwitness_size)
+        return error::invalid_tx_size_64;
+
     return error::transaction_success;
 }
 
@@ -973,6 +977,10 @@ code transaction::check(const context& ctx) const NOEXCEPT
 {
     const auto bip54 = ctx.is_enabled(bip54_rule);
     const auto bip113 = ctx.is_enabled(bip113_rule);
+
+    // BIP54: reject witness-stripped size of exactly 64 bytes.
+    if (bip54 && serialized_size(false) == invalid_tx_nonwitness_size)
+        return error::invalid_tx_size_64;
 
     // BIP54: coinbase timelock must be height-1 with a non-final sequence.
     // Genesis exempt.

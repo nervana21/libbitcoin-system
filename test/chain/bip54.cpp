@@ -392,6 +392,31 @@ BOOST_AUTO_TEST_CASE(bip54__sigops__p2sh_truncated_scriptsig__no_redeem_count)
     BOOST_REQUIRE_EQUAL(tx.accept(ctx), error::transaction_success);
 }
 
+BOOST_AUTO_TEST_CASE(bip54__txsize_vectors__match_expected)
+{
+    const auto root = load_json("txsize.json");
+    size_t index{};
+    for (const auto& case_: root.as_array())
+    {
+        ++index;
+        auto tx = decode_tx(std::string(case_.at("tx").as_string()));
+        const auto size64 = tx.serialized_size(false) ==
+            invalid_tx_nonwitness_size;
+        const auto expected = case_.at("valid").as_bool();
+        BOOST_REQUIRE_MESSAGE((!size64) == expected,
+            "txsize case " + std::to_string(index) + ": " +
+            std::string(case_.at("comment").as_string()));
+
+        context ctx{};
+        ctx.flags = flags::bip54_rule;
+        const auto ec = tx.check(ctx);
+        if (expected)
+            BOOST_REQUIRE_EQUAL(ec, error::transaction_success);
+        else
+            BOOST_REQUIRE_EQUAL(ec, error::invalid_tx_size_64);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(bip54__coinbases_vectors__match_expected)
 {
     const auto root = load_json("coinbases.json");
