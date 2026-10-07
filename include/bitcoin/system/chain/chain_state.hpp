@@ -129,7 +129,8 @@ public:
         struct
         {
             uint32_t self{};
-            uint32_t retarget{};
+            /// First header timestamp of the current difficulty period.
+            uint32_t period_start{};
             timestamps ordered{};
         } timestamp;
     };
