@@ -70,8 +70,9 @@ public:
         /// [block - 1, floor(block - 11, 0)]
         range timestamp{};
 
+        /// Height of the first block of the current difficulty adjustment period.
         /// (block - (block % 2016 == 0 ? 2016 : block % 2016))
-        size_t timestamp_retarget{};
+        size_t period_start_height{};
 
         /// mainnet: 227931, testnet: 21111 (or map::unrequested)
         size_t bip30_deactivate_height{ unrequested };
