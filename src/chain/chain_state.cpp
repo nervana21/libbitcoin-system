@@ -465,7 +465,7 @@ uint32_t chain_state::retarget_timespan(const data& values,
     // constraint. This is properly just a floored subtraction in 32 bit space.
     //*************************************************************************
     const auto timespan = floored_subtract(timestamp_high(values),
-        values.timestamp.retarget);
+        values.timestamp.period_start);
 
     //*************************************************************************
     // CONSENSUS: Constrain the timespan to the configured consensus limits.
@@ -746,12 +746,12 @@ chain_state::data chain_state::to_pool(const chain_state& top,
         data.timestamp.ordered.pop_front();
 
     // Regtest does not perform retargeting.
-    // If promoting from retarget height, move that timestamp into retarget.
+    // If promoting from retarget height, move that timestamp into period_start.
     if (forks.retarget && is_retarget_height(sub1(height),
         settings.retargeting_interval()))
     {
         // Conditionally patch time warp bug (e.g. Litecoin).
-        data.timestamp.retarget = (forks.ltc_time_warp_patch && !is_one(height)) ?
+        data.timestamp.period_start = (forks.ltc_time_warp_patch && !is_one(height)) ?
             *std::next(data.timestamp.ordered.crbegin()) : data.timestamp.self;
     }
 
@@ -787,7 +787,7 @@ chain_state::data chain_state::to_block(const chain_state& pool,
     chain_state::data data{ pool.data_ };
 
     // Replace pool chain state with block state at same (next) height.
-    // Preserve data.timestamp.retarget promotion.
+    // Preserve data.timestamp.period_start promotion.
     const auto& header = block.header();
     data.hash = {};
     data.bits.self = header.bits();
@@ -835,7 +835,7 @@ chain_state::data chain_state::to_header(const chain_state& parent,
     auto data = to_pool(parent, settings);
 
     // Replace the parent (pool or previous) block state with given state.
-    // Preserve data.timestamp.retarget promotion.
+    // Preserve data.timestamp.period_start promotion.
     data.hash = header.hash();
     data.bits.self = header.bits();
     data.version.self = header.version();

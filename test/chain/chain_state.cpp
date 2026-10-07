@@ -364,7 +364,7 @@ chain::chain_state::data get_values(size_t retargeting_interval)
     values.height = retargeting_interval;
     values.bits.ordered.push_back(0x1e0ffff0u);
     values.timestamp.ordered.push_back(1692625u);
-    values.timestamp.retarget = 0;
+    values.timestamp.period_start = 0;
     return values;
 }
 
@@ -855,7 +855,7 @@ static chain::chain_state::data storm_values(const settings& settings, uint32_t 
     const auto interval = settings.retargeting_interval();
     chain::chain_state::data values{};
     values.height = interval;
-    values.timestamp.retarget = 1000000;
+    values.timestamp.period_start = 1000000;
     values.timestamp.ordered.push_back(1000000 + interval * settings.block_spacing_seconds);
     values.bits.ordered = chain_state::bitss(interval, settings.proof_of_work_limit);
     values.bits.ordered.front() = first;
