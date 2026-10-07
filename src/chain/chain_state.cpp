@@ -672,7 +672,7 @@ chain_state::map chain_state::get_map(size_t height,
         settings.bip34_activation_sample);
 
     // The most recent past retarget height.
-    map.timestamp_retarget = retarget_height(height, forks, interval);
+    map.period_start_height = retarget_height(height, forks, interval);
 
     return map;
 }

@@ -70,8 +70,9 @@ public:
         /// [block - 1, floor(block - 11, 0)]
         range timestamp{};
 
-        /// (block - (block % 2016 == 0 ? 2016 : block % 2016))
-        size_t timestamp_retarget{};
+        /// Height of the first header of the current difficulty period
+        /// (block - (block % 2016 == 0 ? 2016 : block % 2016)).
+        size_t period_start_height{};
 
         /// mainnet: 227931, testnet: 21111 (or map::unrequested)
         size_t bip30_deactivate_height{ unrequested };

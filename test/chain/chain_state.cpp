@@ -541,10 +541,10 @@ BOOST_AUTO_TEST_CASE(chain_state__get_map__retarget_height__expected)
     const settings settings(selection::mainnet);
     const auto interval = settings.retargeting_interval();
     const auto map = chain_state::get_map(interval, settings);
-    BOOST_REQUIRE_EQUAL(map.timestamp_retarget, 0u);
+    BOOST_REQUIRE_EQUAL(map.period_start_height, 0u);
 
     const auto next = chain_state::get_map(add1<size_t>(interval), settings);
-    BOOST_REQUIRE_EQUAL(next.timestamp_retarget, interval);
+    BOOST_REQUIRE_EQUAL(next.period_start_height, interval);
 }
 
 BOOST_AUTO_TEST_CASE(chain_state__get_map__bip9_disabled__unrequested)
@@ -999,7 +999,7 @@ BOOST_AUTO_TEST_CASE(chain_state__get_map__no_retarget__unrequested)
     settings.forks.retarget = false;
     const auto map = chain_state::get_map(42, settings);
     BOOST_REQUIRE_EQUAL(map.bits.count, one);
-    BOOST_REQUIRE_EQUAL(map.timestamp_retarget, chain_state::map::unrequested);
+    BOOST_REQUIRE_EQUAL(map.period_start_height, chain_state::map::unrequested);
 }
 
 // properties
