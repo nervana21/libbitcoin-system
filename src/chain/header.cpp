@@ -366,6 +366,7 @@ code header::check(uint32_t timestamp_limit_seconds,
 
 // minimum_block_version
 // median_time_past
+// period_start_timestamp / previous_timestamp
 // work_required
 
 // Checkpoints and previous_block_hash are chain validation (not here).
@@ -381,9 +382,11 @@ code header::accept(const context& ctx,
     if (ctx.is_invalid_work(bits_))
         return error::incorrect_proof_of_work;
     // Pass this header's time so a stale/mismatched `ctx.timestamp` cannot
-    // skip BIP54 timewarp protection.
+    // skip BIP54 timewarp or negative period duration protection.
     if (ctx.is_early_timestamp(timestamp_, retargeting_interval))
         return error::early_timestamp;
+    if (ctx.is_negative_period_duration(timestamp_, retargeting_interval))
+        return error::negative_period_duration;
 
     return error::block_success;
 }

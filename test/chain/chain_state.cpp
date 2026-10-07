@@ -1014,10 +1014,78 @@ BOOST_AUTO_TEST_CASE(chain_state__get_map__no_retarget__unrequested)
     settings settings(selection::mainnet);
     settings.forks.difficult = false;
     settings.forks.retarget = false;
+    settings.forks.bip54 = false;
     const auto map = chain_state::get_map(42, settings);
     BOOST_REQUIRE_EQUAL(map.bits.count, one);
     BOOST_REQUIRE_EQUAL(map.period_start_height, chain_state::map::unrequested);
 }
+
+BOOST_AUTO_TEST_CASE(chain_state__get_map__bip54_no_retarget__period_start_requested)
+{
+    settings settings(selection::regtest);
+    BOOST_REQUIRE(settings.forks.bip54);
+    BOOST_REQUIRE(!settings.forks.retarget);
+    const auto map = chain_state::get_map(42, settings);
+    BOOST_REQUIRE_EQUAL(map.period_start_height, 0u);
+}
+
+// period_start
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(chain_state__period_start__regtest_bip54__promoted)
+{
+    settings cfg{ selection::regtest };
+    BOOST_REQUIRE(cfg.forks.bip54);
+    BOOST_REQUIRE(!cfg.forks.retarget);
+
+    cfg.block_spacing_seconds = 1;
+    cfg.retargeting_interval_seconds = 4;
+    constexpr auto retargeting_interval = 4u;
+    BOOST_REQUIRE_EQUAL(cfg.retargeting_interval(), retargeting_interval);
+
+    constexpr auto period_start = 1'000u;
+    chain_state::data genesis_data{};
+    genesis_data.height = 0;
+    genesis_data.hash = one_hash;
+    genesis_data.timestamp.self = period_start;
+    genesis_data.bits.self = 0x207fffffu;
+    genesis_data.bits.ordered.push_back(genesis_data.bits.self);
+    genesis_data.version.self = 1u;
+    genesis_data.version.ordered.push_back(1u);
+
+    const chain_state genesis{ std::move(genesis_data), cfg };
+
+    const header header1
+    {
+        1u, genesis.hash(), null_hash, period_start + 1u, 0x207fffffu, 0u
+    };
+    const chain_state state1{ genesis, header1, cfg };
+    BOOST_REQUIRE_EQUAL(state1.height(), 1u);
+    BOOST_REQUIRE_EQUAL(state1.period_start_timestamp(), period_start);
+
+    const header header2
+    {
+        1u, state1.hash(), null_hash, period_start + 2u, 0x207fffffu, 0u
+    };
+    const chain_state state2{ state1, header2, cfg };
+    BOOST_REQUIRE_EQUAL(state2.height(), 2u);
+    BOOST_REQUIRE_EQUAL(state2.period_start_timestamp(), period_start);
+
+    constexpr auto early = period_start - 1u;
+    const header end_header
+    {
+        1u, state2.hash(), null_hash, early, 0x207fffffu, 0u
+    };
+    const chain_state end_state{ state2, end_header, cfg };
+    const auto ctx = end_state.context();
+
+    BOOST_REQUIRE_EQUAL(ctx.height, sub1(retargeting_interval));
+    BOOST_REQUIRE_EQUAL(ctx.period_start_timestamp, period_start);
+    BOOST_REQUIRE_EQUAL(ctx.timestamp, early);
+    BOOST_REQUIRE(ctx.is_enabled(flags::bip54_rule));
+    BOOST_REQUIRE(ctx.is_negative_period_duration(retargeting_interval));
+}
+
 
 // properties
 // ----------------------------------------------------------------------------
@@ -1034,6 +1102,7 @@ BOOST_AUTO_TEST_CASE(chain_state__context__always__matches_properties)
     BOOST_REQUIRE_EQUAL(ctx.height, state.height());
     BOOST_REQUIRE_EQUAL(ctx.work_required, state.work_required());
     BOOST_REQUIRE_EQUAL(ctx.previous_timestamp, state.previous_timestamp());
+    BOOST_REQUIRE_EQUAL(ctx.period_start_timestamp, state.period_start_timestamp());
     const auto version = state.minimum_block_version();
     BOOST_REQUIRE_EQUAL(ctx.minimum_block_version, version);
 }

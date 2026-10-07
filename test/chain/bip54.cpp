@@ -18,11 +18,32 @@
  */
 #include "../test.hpp"
 
+#include <fstream>
+#include <iterator>
+#include <optional>
+#include <filesystem>
+#include <boost/json.hpp>
+
 BOOST_AUTO_TEST_SUITE(bip54_tests)
 
 using namespace system::chain;
+namespace json = boost::json;
 
 namespace {
+
+std::filesystem::path bip54_vector(const std::string& name) NOEXCEPT
+{
+    return std::filesystem::path(__FILE__).parent_path() / "bip54" / name;
+}
+
+json::value load_json(const std::string& name)
+{
+    const auto path = bip54_vector(name);
+    std::ifstream file{ path };
+    BOOST_REQUIRE_MESSAGE(file.good(), path.string());
+    const std::string body{ std::istreambuf_iterator<char>(file), {} };
+    return json::parse(body);
+}
 
 data_chunk decode_hex_chunk(const std::string& hex)
 {
@@ -36,7 +57,96 @@ header decode_header(const std::string& hex)
     return header{ decode_hex_chunk(hex) };
 }
 
+bool bip54_timestamps_ok(const std::vector<header>& headers,
+    size_t retargeting_interval) NOEXCEPT
+{
+    for (size_t height{0}; height < headers.size(); ++height)
+    {
+        const auto& hdr = headers.at(height);
+        context ctx{};
+        ctx.flags = flags::bip54_rule;
+        ctx.timestamp = hdr.timestamp();
+        ctx.height = height;
+        ctx.previous_timestamp = is_zero(height) ? 0 :
+            headers.at(sub1(height)).timestamp();
+
+        const auto period_start = height - (height % retargeting_interval);
+        ctx.period_start_timestamp = headers.at(period_start).timestamp();
+
+        ctx.work_required = hdr.bits();
+        ctx.minimum_block_version = 0;
+        ctx.median_time_past = 0;
+
+        const auto interval = possible_narrow_cast<uint32_t>(
+            retargeting_interval);
+        const bool helper_bad =
+            ctx.is_early_timestamp(hdr.timestamp(), interval) ||
+            ctx.is_negative_period_duration(hdr.timestamp(), interval);
+
+        const auto ec = hdr.accept(ctx, interval);
+        const bool accept_bad = (ec == error::early_timestamp) ||
+            (ec == error::negative_period_duration);
+
+        if (helper_bad != accept_bad)
+            return false;
+
+        if (helper_bad)
+            return false;
+    }
+
+    return true;
+}
+
+struct timestamp_case
+{
+    std::vector<header> headers;
+    bool valid;
+    std::string comment;
+};
+
+void collect_timestamp_cases(const json::value& node,
+    std::vector<header> prefix, std::vector<timestamp_case>& out)
+{
+    for (const auto& hex: node.at("block_headers").as_array())
+        prefix.push_back(decode_header(std::string(hex.as_string())));
+
+    if (const auto* extensions = node.as_object().if_contains("extensions"))
+    {
+        for (const auto& branch: extensions->as_array())
+            collect_timestamp_cases(branch, prefix, out);
+        return;
+    }
+
+    out.push_back(
+    {
+        std::move(prefix),
+        node.at("valid").as_bool(),
+        std::string(node.at("comment").as_string())
+    });
+}
+
 } // namespace
+
+// vectors
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(bip54__timestamps_vectors__match_expected)
+{
+    constexpr size_t retargeting_interval = 2016;
+    std::vector<timestamp_case> cases;
+    collect_timestamp_cases(load_json("timestamps.json"), {}, cases);
+    BOOST_REQUIRE(!cases.empty());
+
+    size_t index{};
+    for (const auto& case_: cases)
+    {
+        ++index;
+        const auto ok = bip54_timestamps_ok(case_.headers,
+            retargeting_interval);
+        BOOST_REQUIRE_MESSAGE(ok == case_.valid,
+            "timestamps case " + std::to_string(index) + ": " + case_.comment);
+    }
+}
 
 // integration
 // ----------------------------------------------------------------------------
@@ -146,6 +256,60 @@ BOOST_AUTO_TEST_CASE(bip54__header_accept__stale_ctx_timewarp_on__early_timestam
     BOOST_REQUIRE(on.is_early_timestamp(attack, retargeting_interval));
     BOOST_REQUIRE_EQUAL(attack_header.accept(on, retargeting_interval),
         error::early_timestamp);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__header_accept__stale_ctx_negative_period_off__success)
+{
+    constexpr auto period_start = 1'000u;
+    constexpr auto attack = period_start - 1u;
+    constexpr auto retargeting_interval = 4u;
+
+    const header attack_header
+    {
+        1u, null_hash, null_hash, attack, 0x207fffffu, 0u
+    };
+
+    context off
+    {
+        flags::no_rules,
+        period_start,
+        0u,
+        sub1(retargeting_interval),
+        1u,
+        0x207fffffu,
+        0u,
+        period_start
+    };
+    BOOST_REQUIRE(!off.is_negative_period_duration(attack, retargeting_interval));
+    BOOST_REQUIRE(attack_header.accept(off, retargeting_interval) !=
+        error::negative_period_duration);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__header_accept__stale_ctx_negative_period_on__negative_period_duration)
+{
+    constexpr auto period_start = 1'000u;
+    constexpr auto attack = period_start - 1u;
+    constexpr auto retargeting_interval = 4u;
+
+    const header attack_header
+    {
+        1u, null_hash, null_hash, attack, 0x207fffffu, 0u
+    };
+
+    context on
+    {
+        flags::bip54_rule,
+        period_start,
+        0u,
+        sub1(retargeting_interval),
+        1u,
+        0x207fffffu,
+        0u,
+        period_start
+    };
+    BOOST_REQUIRE(on.is_negative_period_duration(attack, retargeting_interval));
+    BOOST_REQUIRE_EQUAL(attack_header.accept(on, retargeting_interval),
+        error::negative_period_duration);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -84,6 +84,24 @@ public:
         return is_early_timestamp(timestamp, retargeting_interval);
     }
 
+    // Returns true when the last block of a difficulty period has a timestamp
+    // earlier than that period's first header (`period_start_timestamp`).
+    // Equality with the period start is allowed. Inactive when `bip54_rule` is
+    // clear or `retargeting_interval` is zero.
+    inline bool is_negative_period_duration(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
+    {
+        return is_enabled(chain::flags::bip54_rule)
+            && is_nonzero(retargeting_interval)
+            && (height % retargeting_interval == sub1(retargeting_interval))
+            && (block_timestamp < period_start_timestamp);
+    }
+
+    inline bool is_negative_period_duration(uint32_t retargeting_interval) const NOEXCEPT
+    {
+        return is_negative_period_duration(timestamp, retargeting_interval);
+    }
+
     /// Header context within chain.
     uint32_t flags;
     uint32_t timestamp;
@@ -92,6 +110,8 @@ public:
     uint32_t minimum_block_version;
     uint32_t work_required;
     uint32_t previous_timestamp;
+    /// Timestamp of the first header of the current difficulty period.
+    uint32_t period_start_timestamp;
 };
 
 bool operator==(const context& left, const context& right) NOEXCEPT;

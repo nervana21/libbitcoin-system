@@ -134,5 +134,16 @@ BOOST_AUTO_TEST_CASE(context__is_early_timestamp__bip54_and_bip94__tighter)
         prev - max_timewarp_testnet4, retargeting_interval));
 }
 
+// is_negative_period_duration
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(context__is_negative_period_duration__period_end__true)
+{
+    context instance{ flags::bip54_rule, 100, 0, 2015, 0, 0, 0, 101 };
+    BOOST_REQUIRE(instance.is_negative_period_duration(2016));
+
+    instance.timestamp = 101;
+    BOOST_REQUIRE(!instance.is_negative_period_duration(2016));
+}
 
 BOOST_AUTO_TEST_SUITE_END()

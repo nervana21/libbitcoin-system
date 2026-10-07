@@ -67,7 +67,10 @@ DEFINE_ERROR_T_MESSAGE_MAP(block_error)
     { invalid_signature, "invalid batched signature" },
         
     // confirm block
-    { unspent_coinbase_collision, "unspent coinbase collision" }
+    { unspent_coinbase_collision, "unspent coinbase collision" },
+
+    // BIP54
+    { negative_period_duration, "negative difficulty adjustment period duration" }
 };
 
 DEFINE_ERROR_T_CATEGORY(block_error, "block", "block code")
