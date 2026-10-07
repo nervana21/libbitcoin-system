@@ -68,6 +68,74 @@ output decode_output(const std::string& hex)
     return output{ decode_hex_chunk(hex) };
 }
 
+bool bip54_timestamps_ok(const std::vector<header>& headers,
+    size_t retargeting_interval) NOEXCEPT
+{
+    for (size_t height{0}; height < headers.size(); ++height)
+    {
+        const auto& hdr = headers.at(height);
+        context ctx{};
+        ctx.flags = flags::bip54_rule;
+        ctx.timestamp = hdr.timestamp();
+        ctx.height = height;
+        ctx.previous_timestamp = is_zero(height) ? 0 :
+            headers.at(sub1(height)).timestamp();
+
+        const auto period_start = height - (height % retargeting_interval);
+        ctx.period_start_timestamp = headers.at(period_start).timestamp();
+
+        ctx.work_required = hdr.bits();
+        ctx.minimum_block_version = 0;
+        ctx.median_time_past = 0;
+
+        const auto interval = possible_narrow_cast<uint32_t>(
+            retargeting_interval);
+        const bool helper_bad =
+            ctx.is_early_timestamp(hdr.timestamp(), interval) ||
+            ctx.is_negative_interval(hdr.timestamp(), interval);
+
+        const auto ec = hdr.accept(ctx, interval);
+        const bool accept_bad = (ec == error::early_timestamp) ||
+            (ec == error::negative_interval);
+
+        if (helper_bad != accept_bad)
+            return false;
+
+        if (helper_bad)
+            return false;
+    }
+
+    return true;
+}
+
+struct timestamp_case
+{
+    std::vector<header> headers;
+    bool valid;
+    std::string comment;
+};
+
+void collect_timestamp_cases(const json::value& node,
+    std::vector<header> prefix, std::vector<timestamp_case>& out)
+{
+    for (const auto& hex: node.at("block_headers").as_array())
+        prefix.push_back(decode_header(std::string(hex.as_string())));
+
+    if (const auto* extensions = node.as_object().if_contains("extensions"))
+    {
+        for (const auto& branch: extensions->as_array())
+            collect_timestamp_cases(branch, prefix, out);
+        return;
+    }
+
+    out.push_back(
+    {
+        std::move(prefix),
+        node.at("valid").as_bool(),
+        std::string(node.at("comment").as_string())
+    });
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(bip54__settings__regtest_on_mainnet_off)
@@ -94,12 +162,30 @@ BOOST_AUTO_TEST_CASE(bip54__configured_flags__bip54_off__clear)
         chain_state::configured_flags(configured) & flags::bip54_rule));
 }
 
+BOOST_AUTO_TEST_CASE(bip54__timestamps_vectors__match_expected)
+{
+    constexpr size_t retargeting_interval = 2016;
+    std::vector<timestamp_case> cases;
+    collect_timestamp_cases(load_json("timestamps.json"), {}, cases);
+    BOOST_REQUIRE(!cases.empty());
+
+    size_t index{};
+    for (const auto& case_: cases)
+    {
+        ++index;
+        const auto ok = bip54_timestamps_ok(case_.headers,
+            retargeting_interval);
+        BOOST_REQUIRE_MESSAGE(ok == case_.valid,
+            "timestamps case " + std::to_string(index) + ": " + case_.comment);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(bip54__early_timestamp__bip54_grace_7200)
 {
     constexpr auto prev = 10'000u;
     constexpr auto limit = possible_narrow_cast<uint32_t>(
         prev - max_timewarp_bip54);
-    context ctx{ flags::bip54_rule, sub1(limit), 0, 2016, 0, 0, prev };
+    context ctx{ flags::bip54_rule, sub1(limit), 0, 2016, 0, 0, prev, 0 };
     BOOST_REQUIRE(ctx.is_early_timestamp(2016));
 
     ctx.timestamp = limit;
@@ -153,6 +239,7 @@ BOOST_AUTO_TEST_CASE(bip54__testnet3_timewarp_pin__bip54_rejects)
     on.height = tip_height;
     on.timestamp = tip.timestamp();
     on.previous_timestamp = prev.timestamp();
+    on.period_start_timestamp = tip.timestamp();
     on.work_required = tip.bits();
     on.minimum_block_version = 0;
     on.median_time_past = 0;
@@ -160,15 +247,79 @@ BOOST_AUTO_TEST_CASE(bip54__testnet3_timewarp_pin__bip54_rejects)
     BOOST_REQUIRE(to_bool(on.flags & flags::bip54_rule));
     BOOST_REQUIRE(on.is_early_timestamp(tip.timestamp(),
         retargeting_interval));
-    BOOST_REQUIRE_EQUAL(tip.accept(on, retargeting_interval),
-        error::early_timestamp);
+    const auto ec_on = tip.accept(on, retargeting_interval);
+    BOOST_REQUIRE_EQUAL(ec_on, error::early_timestamp);
 
     context off = on;
     off.flags = flags::no_rules;
     BOOST_REQUIRE(!off.is_early_timestamp(tip.timestamp(),
         retargeting_interval));
-    BOOST_REQUIRE(tip.accept(off, retargeting_interval) !=
-        error::early_timestamp);
+    const auto ec_off = tip.accept(off, retargeting_interval);
+    BOOST_REQUIRE(ec_off != error::early_timestamp);
+    BOOST_REQUIRE(ec_off != error::negative_interval);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__chain_state__regtest_promotes_retarget_for_murch_zawy)
+{
+    settings cfg{ selection::regtest };
+    BOOST_REQUIRE(cfg.forks.bip54);
+    BOOST_REQUIRE(!cfg.forks.retarget);
+
+    cfg.block_spacing_seconds = 1;
+    cfg.retargeting_interval_seconds = 4;
+    constexpr auto retargeting_interval = 4u;
+    BOOST_REQUIRE_EQUAL(cfg.retargeting_interval(), retargeting_interval);
+
+    constexpr auto period_start = 1'000u;
+    chain_state::data genesis_data{};
+    genesis_data.height = 0;
+    genesis_data.hash = one_hash;
+    genesis_data.timestamp.self = period_start;
+    genesis_data.bits.self = 0x207fffffu;
+    genesis_data.bits.ordered.push_back(genesis_data.bits.self);
+    genesis_data.version.self = 1u;
+    genesis_data.version.ordered.push_back(1u);
+
+    const chain_state genesis{ std::move(genesis_data), cfg };
+
+    const header header1
+    {
+        1u, genesis.hash(), null_hash, period_start + 1u, 0x207fffffu, 0u
+    };
+    const chain_state state1{ genesis, header1, cfg };
+    BOOST_REQUIRE_EQUAL(state1.height(), 1u);
+    BOOST_REQUIRE_EQUAL(state1.period_start_timestamp(), period_start);
+
+    const header header2
+    {
+        1u, state1.hash(), null_hash, period_start + 2u, 0x207fffffu, 0u
+    };
+    const chain_state state2{ state1, header2, cfg };
+    BOOST_REQUIRE_EQUAL(state2.height(), 2u);
+    BOOST_REQUIRE_EQUAL(state2.period_start_timestamp(), period_start);
+
+    constexpr auto early = period_start - 1u;
+    const header end_header
+    {
+        1u, state2.hash(), null_hash, early, 0x207fffffu, 0u
+    };
+    const chain_state end_state{ state2, end_header, cfg };
+    const auto ctx = end_state.context();
+
+    BOOST_REQUIRE_EQUAL(ctx.height, sub1(retargeting_interval));
+    BOOST_REQUIRE_EQUAL(ctx.period_start_timestamp, period_start);
+    BOOST_REQUIRE_EQUAL(ctx.timestamp, early);
+    BOOST_REQUIRE(ctx.is_enabled(flags::bip54_rule));
+    BOOST_REQUIRE(ctx.is_negative_interval(retargeting_interval));
+}
+
+BOOST_AUTO_TEST_CASE(bip54__negative_interval__period_end)
+{
+    context ctx{ flags::bip54_rule, 100, 0, 2015, 0, 0, 0, 101 };
+    BOOST_REQUIRE(ctx.is_negative_interval(2016));
+
+    ctx.timestamp = 101;
+    BOOST_REQUIRE(!ctx.is_negative_interval(2016));
 }
 
 BOOST_AUTO_TEST_CASE(bip54__sigops_vectors__match_expected)

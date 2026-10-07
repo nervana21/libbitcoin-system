@@ -153,6 +153,7 @@ protected:
     // error::anachronistic_timestamp
     // error::incorrect_proof_of_work
     // error::early_timestamp
+    // error::negative_interval
 
 private:
     static header from_data(reader& source) NOEXCEPT;

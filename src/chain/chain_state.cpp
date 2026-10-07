@@ -386,7 +386,10 @@ size_t chain_state::timestamp_count(size_t height, const forks&) NOEXCEPT
 size_t chain_state::retarget_height(size_t height, const forks& forks,
     size_t retargeting_interval) NOEXCEPT
 {
-    if (!forks.retarget)
+    // Period-start timestamp is required if `forks.retarget` or `forks.bip54`.
+    // Return unrequested only when both are off. Regtest keeps `bip54` on
+    // with `retarget` off, so that chain still requests the height.
+    if (!forks.retarget && !forks.bip54)
         return map::unrequested;
 
     // Height must be a positive multiple of interval, so underflow safe.
@@ -745,13 +748,15 @@ chain_state::data chain_state::to_pool(const chain_state& top,
     if (data.timestamp.ordered.size() > timestamp_count(height, forks))
         data.timestamp.ordered.pop_front();
 
-    // Regtest does not perform retargeting.
     // If promoting from retarget height, move that timestamp into period_start.
-    if (forks.retarget && is_retarget_height(sub1(height),
+    // Regtest disables difficulty retarget (`forks.retarget`) but BIP54
+    // Murch-Zawy still needs the period-start stamp in context.
+    if ((forks.retarget || forks.bip54) && is_retarget_height(sub1(height),
         settings.retargeting_interval()))
     {
         // Conditionally patch time warp bug (e.g. Litecoin).
-        data.timestamp.period_start = (forks.ltc_time_warp_patch && !is_one(height)) ?
+        data.timestamp.period_start = (forks.ltc_time_warp_patch && forks.retarget &&
+            !forks.bip54 && !is_one(height)) ?
             *std::next(data.timestamp.ordered.crbegin()) : data.timestamp.self;
     }
 
@@ -897,7 +902,8 @@ chain::context chain_state::context() const NOEXCEPT
         possible_narrow_cast<uint32_t>(height()),
         minimum_block_version(),
         work_required(),
-        previous_timestamp()
+        previous_timestamp(),
+        period_start_timestamp()
     };
 }
 
@@ -926,6 +932,11 @@ uint32_t chain_state::work_required() const NOEXCEPT
 uint32_t chain_state::timestamp() const NOEXCEPT
 {
     return data_.timestamp.self;
+}
+
+uint32_t chain_state::period_start_timestamp() const NOEXCEPT
+{
+    return data_.timestamp.period_start;
 }
 
 uint32_t chain_state::previous_timestamp() const NOEXCEPT

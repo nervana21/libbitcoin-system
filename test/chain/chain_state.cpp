@@ -997,9 +997,19 @@ BOOST_AUTO_TEST_CASE(chain_state__get_map__no_retarget__unrequested)
     settings settings(selection::mainnet);
     settings.forks.difficult = false;
     settings.forks.retarget = false;
+    settings.forks.bip54 = false;
     const auto map = chain_state::get_map(42, settings);
     BOOST_REQUIRE_EQUAL(map.bits.count, one);
     BOOST_REQUIRE_EQUAL(map.period_start_height, chain_state::map::unrequested);
+}
+
+BOOST_AUTO_TEST_CASE(chain_state__get_map__bip54_no_retarget__period_start_requested)
+{
+    settings settings(selection::regtest);
+    BOOST_REQUIRE(settings.forks.bip54);
+    BOOST_REQUIRE(!settings.forks.retarget);
+    const auto map = chain_state::get_map(42, settings);
+    BOOST_REQUIRE_EQUAL(map.period_start_height, 0u);
 }
 
 // properties
@@ -1017,6 +1027,7 @@ BOOST_AUTO_TEST_CASE(chain_state__context__always__matches_properties)
     BOOST_REQUIRE_EQUAL(ctx.height, state.height());
     BOOST_REQUIRE_EQUAL(ctx.work_required, state.work_required());
     BOOST_REQUIRE_EQUAL(ctx.previous_timestamp, state.previous_timestamp());
+    BOOST_REQUIRE_EQUAL(ctx.period_start_timestamp, state.period_start_timestamp());
     const auto version = state.minimum_block_version();
     BOOST_REQUIRE_EQUAL(ctx.minimum_block_version, version);
 }

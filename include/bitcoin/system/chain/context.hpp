@@ -84,6 +84,22 @@ public:
         return is_early_timestamp(timestamp, retargeting_interval);
     }
 
+    // BIP54 Murch-Zawy: difficulty adjustment period duration must not be
+    // negative (last block timestamp >= period-start timestamp).
+    inline bool is_negative_interval(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
+    {
+        return is_enabled(chain::flags::bip54_rule)
+            && is_nonzero(retargeting_interval)
+            && (height % retargeting_interval == sub1(retargeting_interval))
+            && (block_timestamp < period_start_timestamp);
+    }
+
+    inline bool is_negative_interval(uint32_t retargeting_interval) const NOEXCEPT
+    {
+        return is_negative_interval(timestamp, retargeting_interval);
+    }
+
     /// Header context within chain.
     uint32_t flags;
     uint32_t timestamp;
@@ -92,6 +108,8 @@ public:
     uint32_t minimum_block_version;
     uint32_t work_required;
     uint32_t previous_timestamp;
+    /// Timestamp of the first header of the current difficulty period.
+    uint32_t period_start_timestamp;
 };
 
 bool operator==(const context& left, const context& right) NOEXCEPT;
