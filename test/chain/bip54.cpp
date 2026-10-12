@@ -51,6 +51,49 @@ header decode_header(const std::string& hex)
     return header{ decode_hex_chunk(hex) };
 }
 
+transaction decode_tx(const std::string& hex)
+{
+    return transaction{ decode_hex_chunk(hex), /*witness=*/true };
+}
+
+transaction make_coinbase(uint32_t locktime, uint32_t sequence,
+    const data_chunk& script_sig = {})
+{
+    const auto bytes = script_sig.empty() ?
+        data_chunk{ 0x00, 0x00 } : script_sig;
+    return transaction
+    {
+        2u,
+        inputs{ input{ point{}, script{ bytes, /*prefix=*/false }, sequence } },
+        outputs{ output{ 0u, script{} } },
+        locktime
+    };
+}
+
+transaction make_64byte_coinbase()
+{
+    const auto cb64 = make_coinbase(/*locktime=*/0u, max_input_sequence,
+        data_chunk{ 0x00, 0x00, 0x00, 0x00 });
+    BOOST_REQUIRE_EQUAL(cb64.serialized_size(/*witness=*/false),
+        invalid_nonwitness_tx_size);
+    return cb64;
+}
+
+transaction make_64byte_tx()
+{
+    const transaction tx
+    {
+        2u,
+        inputs{ input{ point{ null_hash, 0u }, script{}, max_input_sequence } },
+        outputs{ output{ 0u, script{ data_chunk{ 0x00, 0x00, 0x00, 0x00 },
+            /*prefix=*/false } } },
+        0u
+    };
+    BOOST_REQUIRE_EQUAL(tx.serialized_size(/*witness=*/false),
+        invalid_nonwitness_tx_size);
+    return tx;
+}
+
 struct timestamp_vector
 {
     std::vector<header> headers;
@@ -192,6 +235,38 @@ BOOST_AUTO_TEST_CASE(bip54__accept__stale_ctx_negative_period_on__negative_perio
         error::negative_period_duration);
 }
 
+// pool (check_guard)
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(bip54__check_guard__tx_size_64__invalid_nonwitness_tx_size)
+{
+    const auto tx = make_64byte_tx();
+    BOOST_REQUIRE_EQUAL(tx.check_guard(bip54_ctx(false)),
+        error::invalid_nonwitness_tx_size);
+    BOOST_REQUIRE_EQUAL(tx.check_guard(bip54_ctx(true)),
+        error::invalid_nonwitness_tx_size);
+}
+
+// block (check)
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(bip54__check__tx_size_64__invalid_nonwitness_tx_size)
+{
+    const auto tx = make_64byte_tx();
+    BOOST_REQUIRE_EQUAL(tx.check(bip54_ctx(false)),
+        error::transaction_success);
+    BOOST_REQUIRE_EQUAL(tx.check(bip54_ctx(true)),
+        error::invalid_nonwitness_tx_size);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__check__coinbase_size_64__invalid_nonwitness_tx_size)
+{
+    const auto cb = make_64byte_coinbase();
+    BOOST_REQUIRE_EQUAL(cb.check(bip54_ctx(false)),
+        error::transaction_success);
+    BOOST_REQUIRE_EQUAL(cb.check(bip54_ctx(true)),
+        error::invalid_nonwitness_tx_size);
+}
 
 // vectors
 // ----------------------------------------------------------------------------
@@ -214,6 +289,29 @@ BOOST_AUTO_TEST_CASE(bip54__timestamps__vectors__expected)
     }
 }
 
+BOOST_AUTO_TEST_CASE(bip54__txsize__vectors__expected)
+{
+    const auto document = load_json("txsize.json");
+    const auto& vectors = document.as_array();
+    for (size_t i{0}; i < vectors.size(); ++i)
+    {
+        const auto& vector = vectors.at(i);
+        const auto tx = decode_tx(std::string(vector.at("tx").as_string()));
+        const auto size64 = tx.serialized_size(/*witness=*/false) ==
+            invalid_nonwitness_tx_size;
+        const auto valid = vector.at("valid").as_bool();
+        BOOST_REQUIRE_MESSAGE(size64 != valid,
+            "txsize case " + std::to_string(i + 1) + ": " +
+            std::string(vector.at("comment").as_string()));
+
+        constexpr auto on = bip54_ctx(true);
+        const auto ec_check = tx.check(on);
+        if (valid)
+            BOOST_REQUIRE_EQUAL(ec_check, error::transaction_success);
+        else
+            BOOST_REQUIRE_EQUAL(ec_check, error::invalid_nonwitness_tx_size);
+    }
+}
 
 // integration
 // ----------------------------------------------------------------------------
