@@ -64,6 +64,8 @@ enum transaction_error_t
 
     // BIP54
     invalid_nonwitness_tx_size,
+    invalid_coinbase_locktime,
+    invalid_coinbase_sequence,
 
     // chained to script_error_t
     tx_error_last
