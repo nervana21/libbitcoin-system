@@ -56,6 +56,11 @@ transaction decode_tx(const std::string& hex)
     return transaction{ decode_hex_chunk(hex), /*witness=*/true };
 }
 
+block decode_block(const std::string& hex)
+{
+    return block{ decode_hex_chunk(hex), /*witness=*/true };
+}
+
 transaction make_coinbase(uint32_t sequence, uint32_t locktime,
     const data_chunk& script_sig = {})
 {
@@ -268,6 +273,52 @@ BOOST_AUTO_TEST_CASE(bip54__check__coinbase_size_64__invalid_nonwitness_tx_size)
         error::invalid_nonwitness_tx_size);
 }
 
+BOOST_AUTO_TEST_CASE(bip54__check__coinbase_lock_off__transaction_success)
+{
+    const auto bad_lock = make_coinbase(sub1(max_input_sequence), /*locktime=*/0u);
+    
+    constexpr auto off = bip54_ctx(false, /*height=*/21u);
+    BOOST_REQUIRE_EQUAL(bad_lock.check(off), error::transaction_success);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__check__coinbase_lock_on__invalid_coinbase_locktime)
+{
+    const auto bad_lock = make_coinbase(sub1(max_input_sequence), /*locktime=*/0u);
+
+    constexpr auto on = bip54_ctx(true, /*height=*/21u);
+    BOOST_REQUIRE_EQUAL(bad_lock.check(on), error::invalid_coinbase_locktime);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__check__coinbase_sequence_off__transaction_success)
+{
+    constexpr auto height = 21u;
+    const auto bad_seq = make_coinbase(max_input_sequence, sub1(height));
+
+    constexpr auto off = bip54_ctx(false, height);
+    BOOST_REQUIRE_EQUAL(bad_seq.check(off), error::transaction_success);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__check__coinbase_sequence_on__invalid_coinbase_sequence)
+{
+    constexpr auto height = 21u;
+    const auto bad_seq = make_coinbase(max_input_sequence, sub1(height));
+
+    constexpr auto on = bip54_ctx(true, height);
+    BOOST_REQUIRE_EQUAL(bad_seq.check(on), error::invalid_coinbase_sequence);
+}
+
+// edges
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(bip54__check__coinbase_height_zero__transaction_success)
+{
+    // Would fail lock and sequence at nonzero height. Rule skips height 0.
+    const auto cb = make_coinbase(max_input_sequence, /*locktime=*/0u);
+
+    constexpr auto on = bip54_ctx(true, /*height=*/0);
+    BOOST_REQUIRE_EQUAL(cb.check(on), error::transaction_success);
+}
+
 // vectors
 // ----------------------------------------------------------------------------
 
@@ -310,6 +361,41 @@ BOOST_AUTO_TEST_CASE(bip54__txsize__vectors__expected)
             BOOST_REQUIRE_EQUAL(ec_check, error::transaction_success);
         else
             BOOST_REQUIRE_EQUAL(ec_check, error::invalid_nonwitness_tx_size);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(bip54__coinbases__vectors__expected)
+{
+    const auto document = load_json("coinbases.json");
+    const auto& vectors = document.as_array();
+    for (size_t i{0}; i < vectors.size(); ++i)
+    {
+        const auto& vector = vectors.at(i);
+        const auto& blockchain = vector.at("block_chain").as_array();
+        const auto height = sub1(blockchain.size());
+        const auto block = decode_block(std::string(blockchain.back().as_string()));
+        const auto on = bip54_ctx(true, height);
+        const auto& coinbase = *block.transactions_ptr()->front();
+        const auto ec_check = coinbase.check(on);
+        const bool valid = vector.at("valid").as_bool();
+        const auto comment = std::string(vector.at("comment").as_string());
+        if (valid)
+        {
+            BOOST_REQUIRE_MESSAGE(ec_check == error::transaction_success,
+                "coinbase case " + std::to_string(i + 1) + ": " + comment);
+        }
+        else if (coinbase.locktime() != sub1(height))
+        {
+            BOOST_REQUIRE_MESSAGE(ec_check == error::invalid_coinbase_locktime,
+                "coinbase case " + std::to_string(i + 1) + ": " + comment +
+                " ec_check=" + ec_check.message());
+        }
+        else
+        {
+            BOOST_REQUIRE_MESSAGE(ec_check == error::invalid_coinbase_sequence,
+                "coinbase case " + std::to_string(i + 1) + ": " + comment +
+                " ec_check=" + ec_check.message());
+        }
     }
 }
 
