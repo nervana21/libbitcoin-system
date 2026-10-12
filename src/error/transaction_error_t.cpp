@@ -52,9 +52,12 @@ DEFINE_ERROR_T_MESSAGE_MAP(transaction_error)
     { relative_time_locked, "transaction relative time locked" },
     { transaction_weight_limit, "transaction weight limit exceeded" },
 
-    // dconfirm transaction
+    // confirm transaction
     { unconfirmed_spend, "spend of unconfirmed previous output" },
-    { confirmed_double_spend, "spend of confirmed spent previous output" }
+    { confirmed_double_spend, "spend of confirmed spent previous output" },
+
+    // BIP54
+    { invalid_nonwitness_tx_size, "witness-stripped transaction is exactly 64 bytes" },
 };
 
 DEFINE_ERROR_T_CATEGORY(transaction_error, "transaction", "transaction code")
