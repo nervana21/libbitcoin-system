@@ -407,6 +407,17 @@ size_t transaction::signature_operations(bool bip16, bool bip141) const NOEXCEPT
         std::accumulate(outputs_->begin(), outputs_->end(), zero, out));
 }
 
+size_t transaction::bip54_signature_operations() const NOEXCEPT
+{
+    const auto sum = [](size_t total, const auto& input) NOEXCEPT
+    {
+        // Overflow returns max_size_t.
+        return ceilinged_add(total, input->bip54_signature_operations());
+    };
+
+    return std::accumulate(inputs_->begin(), inputs_->end(), zero, sum);
+}
+
 // private
 chain::points transaction::points() const NOEXCEPT
 {
@@ -920,7 +931,7 @@ code transaction::confirm_guard(const context& ctx) const NOEXCEPT
     return error::transaction_success;
 }
 
-// Redundant with block max_block_sigops accept.
+// Rejects txs with sigops counts greater than max_tx_bip54_sigops.
 code transaction::accept_guard(const context& ctx) const NOEXCEPT
 {
     const auto bip16 = ctx.is_enabled(flags::bip16_rule);
@@ -928,6 +939,9 @@ code transaction::accept_guard(const context& ctx) const NOEXCEPT
 
     if (is_missing_prevouts())
         return error::missing_previous_output;
+    // Always enforce BIP54 sigops limit.
+    if (bip54_signature_operations() > max_tx_bip54_sigops)
+        return error::bip54_sigops_limit;
     if (is_signature_operations_limited(bip16, bip141))
         return error::transaction_sigop_limit;
 
@@ -985,7 +999,7 @@ code transaction::check(const context& ctx) const NOEXCEPT
 
 // Do not need to invoke on coinbase.
 // This assumes that prevout caching is completed on all inputs.
-code transaction::accept(const context&) const NOEXCEPT
+code transaction::accept(const context& ctx) const NOEXCEPT
 {
     ////BC_ASSERT(!is_coinbase());
 
@@ -995,6 +1009,9 @@ code transaction::accept(const context&) const NOEXCEPT
         return error::missing_previous_output;
     if (is_overspent())
         return error::spend_exceeds_value;
+    if (ctx.is_enabled(bip54_rule) &&
+        bip54_signature_operations() > max_tx_bip54_sigops)
+        return error::bip54_sigops_limit;
 
     return error::transaction_success;
 }

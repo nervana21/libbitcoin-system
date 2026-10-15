@@ -60,6 +60,7 @@ DEFINE_ERROR_T_MESSAGE_MAP(transaction_error)
     { invalid_nonwitness_tx_size, "witness-stripped transaction is exactly 64 bytes" },
     { invalid_coinbase_locktime, "coinbase locktime must be height minus one" },
     { invalid_coinbase_sequence, "coinbase input sequence must not be final" },
+    { bip54_sigops_limit, "too many BIP54 signature operations" },
 };
 
 DEFINE_ERROR_T_CATEGORY(transaction_error, "transaction", "transaction code")
