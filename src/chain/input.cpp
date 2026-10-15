@@ -438,6 +438,36 @@ size_t input::signature_operations(bool bip16, bool bip141) const NOEXCEPT
     return sigops;
 }
 
+size_t input::bip54_signature_operations() const NOEXCEPT
+{
+    // Count accurate sigops in the input scriptSig.
+    const bool accurate = true;
+    const size_t sigops = script_->signature_operations(accurate);
+
+    // No prevout, return input sigops.
+    if (!prevout)
+        return sigops;
+
+    // Tx has a prevout, first check if it is P2SH.
+    if (script::is_pay_script_hash_pattern(prevout->script().ops()))
+    {
+        // If underflow, omit redeem_script sigops, return input sigops.
+        if (script_->is_underflow())
+            return sigops;
+
+        // If no redeem_script, return input sigops.
+        chain::script redeem_script;
+        if (!script_->extract_sigop_script(redeem_script, prevout->script()))
+            return sigops;
+
+        // Sum input and redeem_script sigops.
+        return ceilinged_add(sigops, redeem_script.signature_operations(accurate));
+    }
+
+    // Non-P2SH prevout, sum input and spent scriptPubKey sigops.
+    return ceilinged_add(sigops, prevout->script().signature_operations(accurate));
+}
+
 BC_POP_WARNING()
 
 } // namespace chain

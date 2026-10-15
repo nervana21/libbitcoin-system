@@ -61,6 +61,11 @@ block decode_block(const std::string& hex)
     return block{ decode_hex_chunk(hex), /*witness=*/true };
 }
 
+output decode_output(const std::string& hex)
+{
+    return output{ decode_hex_chunk(hex) };
+}
+
 transaction make_coinbase(uint32_t sequence, uint32_t locktime,
     const data_chunk& script_sig = {})
 {
@@ -96,6 +101,26 @@ transaction make_64byte_tx()
     };
     BOOST_REQUIRE_EQUAL(tx.serialized_size(/*witness=*/false),
         invalid_nonwitness_tx_size);
+    return tx;
+}
+
+transaction make_sigops_tx(size_t sigops)
+{
+    operations ops;
+    ops.reserve(sigops);
+    for (size_t n{0}; n < sigops; ++n)
+        ops.emplace_back(opcode::checksig);
+
+    input inpt{ point{ null_hash, 0u }, script{}, max_input_sequence };
+    inpt.prevout = to_shared<output>(1_u64, script{ ops });
+    const transaction tx
+    {
+        2u,
+        inputs{ std::move(inpt) },
+        outputs{ output{ 1_u64, script{} } },
+        0u
+    };
+    BOOST_REQUIRE_EQUAL(tx.bip54_signature_operations(), sigops);
     return tx;
 }
 
@@ -240,7 +265,7 @@ BOOST_AUTO_TEST_CASE(bip54__accept__stale_ctx_negative_period_on__negative_perio
         error::negative_period_duration);
 }
 
-// pool (check_guard)
+// pool (check_guard / accept_guard)
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(bip54__check_guard__tx_size_64__invalid_nonwitness_tx_size)
@@ -252,7 +277,16 @@ BOOST_AUTO_TEST_CASE(bip54__check_guard__tx_size_64__invalid_nonwitness_tx_size)
         error::invalid_nonwitness_tx_size);
 }
 
-// block (check)
+BOOST_AUTO_TEST_CASE(bip54__accept_guard__sigops_over__bip54_sigops_limit)
+{
+    const auto excess = make_sigops_tx(add1(max_tx_bip54_sigops));
+    BOOST_REQUIRE_EQUAL(excess.accept_guard(bip54_ctx(false)),
+        error::bip54_sigops_limit);
+    BOOST_REQUIRE_EQUAL(excess.accept_guard(bip54_ctx(true)),
+        error::bip54_sigops_limit);
+}
+
+// block (check / accept)
 // ----------------------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(bip54__check__tx_size_64__invalid_nonwitness_tx_size)
@@ -307,6 +341,15 @@ BOOST_AUTO_TEST_CASE(bip54__check__coinbase_sequence_on__invalid_coinbase_sequen
     BOOST_REQUIRE_EQUAL(bad_seq.check(on), error::invalid_coinbase_sequence);
 }
 
+BOOST_AUTO_TEST_CASE(bip54__accept__sigops_over__bip54_sigops_limit)
+{
+    const auto excess = make_sigops_tx(add1(max_tx_bip54_sigops));
+    BOOST_REQUIRE_EQUAL(excess.accept(bip54_ctx(false)),
+        error::transaction_success);
+    BOOST_REQUIRE_EQUAL(excess.accept(bip54_ctx(true)),
+        error::bip54_sigops_limit);
+}
+
 // edges
 // ----------------------------------------------------------------------------
 
@@ -317,6 +360,36 @@ BOOST_AUTO_TEST_CASE(bip54__check__coinbase_height_zero__transaction_success)
 
     constexpr auto on = bip54_ctx(true, /*height=*/0);
     BOOST_REQUIRE_EQUAL(cb.check(on), error::transaction_success);
+}
+
+BOOST_AUTO_TEST_CASE(bip54__accept__p2sh_truncated_scriptsig__transaction_success)
+{
+    // Claim 0x09c6 (max_tx_bip54_sigops + 2) bytes...
+    data_chunk sig_bytes
+    {
+        static_cast<uint8_t>(opcode::push_two_size),
+        0xc6, 0x09
+    };
+    // ...provide one less byte for underflow
+    sig_bytes.insert(sig_bytes.end(), add1(max_tx_bip54_sigops),
+        static_cast<uint8_t>(opcode::checksig));
+    const script script_sig{ sig_bytes, /*prefix=*/false };
+    BOOST_REQUIRE(script_sig.is_underflow());
+
+    const script p2sh{ script::to_pay_script_hash_pattern(short_hash{}) };
+    input inpt{ point{ null_hash, 0u }, script_sig, max_input_sequence };
+    inpt.prevout = to_shared<output>(1_u64, p2sh);
+    const transaction tx
+    {
+        2u,
+        inputs{ std::move(inpt) },
+        outputs{ output{ 1_u64, script{} } },
+        0u
+    };
+    BOOST_REQUIRE_EQUAL(tx.bip54_signature_operations(), 0u);
+
+    constexpr auto on = bip54_ctx(true);
+    BOOST_REQUIRE_EQUAL(tx.accept(on), error::transaction_success);
 }
 
 // vectors
@@ -396,6 +469,39 @@ BOOST_AUTO_TEST_CASE(bip54__coinbases__vectors__expected)
                 "coinbase case " + std::to_string(i + 1) + ": " + comment +
                 " ec_check=" + ec_check.message());
         }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(bip54__sigops__vectors__expected)
+{
+    const auto document = load_json("sigops.json");
+    const auto& vectors = document.as_array();
+    for (size_t i{0}; i < vectors.size(); ++i)
+    {
+        const auto& vector = vectors.at(i);
+        const auto tx = decode_tx(std::string(vector.at("tx").as_string()));
+        const auto& spent = vector.at("spent_outputs").as_array();
+        BOOST_REQUIRE_EQUAL(spent.size(), tx.inputs());
+
+        for (size_t j{0}; j < spent.size(); ++j)
+        {
+            const auto prev = decode_output(std::string(spent.at(j).as_string()));
+            (*tx.inputs_ptr())[j]->prevout = to_shared(std::move(prev));
+        }
+
+        const bool within_limit = tx.bip54_signature_operations() <=
+            max_tx_bip54_sigops;
+        const bool valid = vector.at("valid").as_bool();
+        BOOST_REQUIRE_MESSAGE(within_limit == valid,
+            "sigops case " + std::to_string(i + 1) + ": " +
+            std::string(vector.at("comment").as_string()));
+
+        constexpr auto on = bip54_ctx(true);
+        const auto ec_accept = tx.accept(on);
+        if (valid)
+            BOOST_REQUIRE_EQUAL(ec_accept, error::transaction_success);
+        else
+            BOOST_REQUIRE_EQUAL(ec_accept, error::bip54_sigops_limit);
     }
 }
 
