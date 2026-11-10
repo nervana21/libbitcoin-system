@@ -28,7 +28,7 @@ builds/gnu/build-aux
 builds/gnu/config.*
 builds/gnu/configure
 builds/gnu/libtool
-builds/gnu/.dirstamp
+**/.dirstamp
 
 # pkg-config pc file from .pc.in
 builds/gnu/*.pc
@@ -36,8 +36,9 @@ builds/gnu/*.pc
 # configured headers from in-tree configure
 builds/gnu/include
 
-# configured sources from in-tree make
+# configured sources / tests from in-tree make
 builds/gnu/src
+builds/gnu/test
 
 # msbuild/msvc
 /.vs
