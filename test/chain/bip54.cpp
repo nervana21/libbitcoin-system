@@ -41,11 +41,11 @@ constexpr context bip54_ctx(bool engaged, size_t height = 0) NOEXCEPT
 
 } // namespace
 
-// header::accept currently reads ctx.timestamp for BIP54 timewarp and
-// negative timespan. A stale safe ctx.timestamp skips the header's own stamp.
+// header::accept passes the header stamp so a stale safe ctx.timestamp cannot
+// skip BIP54 timewarp or negative timespan.
 // ----------------------------------------------------------------------------
 
-BC_AUTO_TEST_CASE(bip54__accept__stale_ctx_timewarp_on__skips_early_timestamp)
+BC_AUTO_TEST_CASE(bip54__accept__stale_ctx_timewarp_on__early_timestamp)
 {
     constexpr auto prev_block_timestamp = 1'000'000u;
     constexpr auto attack = possible_narrow_cast<uint32_t>(
@@ -58,14 +58,15 @@ BC_AUTO_TEST_CASE(bip54__accept__stale_ctx_timewarp_on__skips_early_timestamp)
 
     auto on = bip54_ctx(true);
     on.previous_timestamp = prev_block_timestamp;
-    // Stale ctx.timestamp looks safe; accept currently uses it.
+    // Stale ctx.timestamp looks safe; header time still fails.
     on.timestamp = prev_block_timestamp;
+    BC_REQUIRE(on.is_early_timestamp(attack, retargeting_interval));
     BC_REQUIRE(!on.is_early_timestamp(retargeting_interval));
-    BC_REQUIRE(attack_header.accept(on, retargeting_interval) !=
-        error::early_timestamp); // TODO: should be early_timestamp
+    BC_REQUIRE_EQUAL(attack_header.accept(on, retargeting_interval),
+        error::early_timestamp);
 }
 
-BC_AUTO_TEST_CASE(bip54__accept__stale_ctx_negative_timespan_on__skips_negative_timespan)
+BC_AUTO_TEST_CASE(bip54__accept__stale_ctx_negative_timespan_on__negative_timespan)
 {
     constexpr auto period_start = 1'000u;
     constexpr auto attack = period_start - 1u;
@@ -77,11 +78,12 @@ BC_AUTO_TEST_CASE(bip54__accept__stale_ctx_negative_timespan_on__skips_negative_
 
     auto on = bip54_ctx(true, sub1(retargeting_interval));
     on.retarget_timestamp = period_start;
-    // Stale ctx.timestamp looks safe; accept currently uses it.
+    // Stale ctx.timestamp looks safe; header time still fails.
     on.timestamp = period_start;
+    BC_REQUIRE(on.is_negative_timespan(attack, retargeting_interval));
     BC_REQUIRE(!on.is_negative_timespan(retargeting_interval));
-    BC_REQUIRE(attack_header.accept(on, retargeting_interval) !=
-        error::negative_timespan); // TODO: should be negative_timespan
+    BC_REQUIRE_EQUAL(attack_header.accept(on, retargeting_interval),
+        error::negative_timespan);
 }
 
 BC_AUTO_TEST_SUITE_END()

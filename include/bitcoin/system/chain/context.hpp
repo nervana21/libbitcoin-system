@@ -58,22 +58,41 @@ public:
     }
 
     // The block's timestamp is too early on a difficulty adjustment block.
-    inline bool is_early_timestamp(uint32_t retargeting_interval) const NOEXCEPT
+    // Pass block_timestamp so a stale/mismatched ctx.timestamp cannot skip the
+    // BIP54/BIP94 timewarp bound.
+    inline bool is_early_timestamp(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
     {
+        if (is_zero(retargeting_interval))
+            return false;
+
         const auto bip94 = is_enabled(chain::flags::time_warp_patch);
         const auto bip54 = is_enabled(chain::flags::bip54_timewarp_rule);
         const auto limit = bip94 ? max_timewarp : max_timewarp_bip54;
         return (bip94 || bip54)
             && is_zero(height % retargeting_interval)
-            && (timestamp < floored_subtract<uint32_t>(previous_timestamp, limit));
+            && (block_timestamp < floored_subtract<uint32_t>(previous_timestamp,
+                limit));
+    }
+
+    inline bool is_early_timestamp(uint32_t retargeting_interval) const NOEXCEPT
+    {
+        return is_early_timestamp(timestamp, retargeting_interval);
     }
 
     // The block's timestamp is before that of the first block of its period,
     // on the last block of the period (bip54).
+    inline bool is_negative_timespan(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
+    {
+        return is_nonzero(retargeting_interval)
+            && (height % retargeting_interval == sub1(retargeting_interval))
+            && (block_timestamp < retarget_timestamp);
+    }
+
     inline bool is_negative_timespan(uint32_t retargeting_interval) const NOEXCEPT
     {
-        return (height % retargeting_interval == sub1(retargeting_interval))
-            && (timestamp < retarget_timestamp);
+        return is_negative_timespan(timestamp, retargeting_interval);
     }
 
     /// Header context within chain.
