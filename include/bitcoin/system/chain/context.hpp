@@ -57,23 +57,49 @@ public:
         return bits != work_required;
     }
 
-    // The block's timestamp is too early on a difficulty adjustment block.
-    inline bool is_early_timestamp(uint32_t retargeting_interval) const NOEXCEPT
+    // True when the candidate block stamp is too early on a retarget height.
+    // block_timestamp is the header stamp under judgment, not ctx.timestamp.
+    // Callers must pass the header stamp so a stale ctx.timestamp cannot skip.
+    inline bool is_early_timestamp(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
     {
+        // BIP94 time warp patch on testnet4 uses the wider max_timewarp bound.
         const auto bip94 = is_enabled(chain::flags::time_warp_patch);
+
+        // BIP54 timewarp rule uses the tighter max_timewarp_bip54 bound.
         const auto bip54 = is_enabled(chain::flags::bip54_timewarp_rule);
+
+        // Prefer the BIP94 bound when both rules are active.
         const auto limit = bip94 ? max_timewarp : max_timewarp_bip54;
-        return (bip94 || bip54)
-            && is_zero(height % retargeting_interval)
-            && (timestamp < floored_subtract<uint32_t>(previous_timestamp, limit));
+
+        // Only retarget heights enforce the early stamp floor.
+        const auto at_retarget_height = is_zero(height % retargeting_interval);
+
+        // Floor is previous_timestamp minus limit, never underflows.
+        const auto earliest_allowed = floored_subtract<uint32_t>(
+            previous_timestamp, limit);
+
+        // Compare the header stamp argument, never the ctx.timestamp field.
+        const auto stamp_too_early = block_timestamp < earliest_allowed;
+
+        return (bip94 || bip54) && at_retarget_height && stamp_too_early;
     }
 
-    // The block's timestamp is before that of the first block of its period,
-    // on the last block of the period (bip54).
-    inline bool is_negative_timespan(uint32_t retargeting_interval) const NOEXCEPT
+    // True when the last block of a BIP54 period stamps before the period start.
+    // block_timestamp is the header stamp under judgment, not ctx.timestamp.
+    // Callers must pass the header stamp so a stale ctx.timestamp cannot skip.
+    inline bool is_negative_timespan(uint32_t block_timestamp,
+        uint32_t retargeting_interval) const NOEXCEPT
     {
-        return (height % retargeting_interval == sub1(retargeting_interval))
-            && (timestamp < retarget_timestamp);
+        // Last height of a period is interval minus one modulo interval.
+        const auto last_height_of_period =
+            height % retargeting_interval == sub1(retargeting_interval);
+
+        // Compare the header stamp argument against the period first stamp.
+        const auto stamp_before_period_start =
+            block_timestamp < retarget_timestamp;
+
+        return last_height_of_period && stamp_before_period_start;
     }
 
     /// Header context within chain.

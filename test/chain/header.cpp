@@ -459,7 +459,7 @@ BC_AUTO_TEST_CASE(header__accept__bip54_timespan_at_first__block_success)
     BC_REQUIRE_EQUAL(instance.accept(ctx, 2016), error::block_success);
 }
 
-// These two cases pin a bug. BIP54 must judge the header stamp field.
+// These two cases prove the fix. BIP54 must judge the header stamp field.
 // A safe looking ctx.timestamp must not hide an attack header stamp
 // for timewarp or for negative timespan.
 // ----------------------------------------------------------------------------
@@ -496,12 +496,10 @@ BC_AUTO_TEST_CASE(
         0,
         previous_block_time };
 
-    // Current bug path reads ctx.timestamp not the header stamp.
-    // So accept does not return early_timestamp yet.
-    // The assertion documents the wrong outcome until the fix commit.
+    // Fix path passes header stamp into is_early_timestamp.
+    // Safe looking ctx.timestamp can no longer hide the attack stamp.
     const auto accept_code = attack_header.accept(safe_looking_ctx, 2016);
-    BC_REQUIRE(accept_code !=
-        error::early_timestamp); // TODO: should be early_timestamp
+    BC_REQUIRE_EQUAL(accept_code, error::early_timestamp);
 }
 
 BC_AUTO_TEST_CASE(
@@ -535,12 +533,10 @@ BC_AUTO_TEST_CASE(
         0,
         period_first_stamp };
 
-    // Current bug path reads ctx.timestamp not the header stamp.
-    // So accept does not return negative_timespan yet.
-    // The assertion documents the wrong outcome until the fix commit.
+    // Fix path passes header stamp into is_negative_timespan.
+    // Safe looking ctx.timestamp can no longer hide the attack stamp.
     const auto accept_code = attack_header.accept(safe_looking_ctx, 2016);
-    BC_REQUIRE(accept_code !=
-        error::negative_timespan); // TODO: should be negative_timespan
+    BC_REQUIRE_EQUAL(accept_code, error::negative_timespan);
 }
 
 BC_AUTO_TEST_CASE(header__check__zero_bits__invalid_proof_of_work)

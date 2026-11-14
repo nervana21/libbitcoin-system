@@ -382,9 +382,15 @@ code header::accept(const context& ctx,
         return error::anachronistic_timestamp;
     if (ctx.is_invalid_work(bits_))
         return error::incorrect_proof_of_work;
-    if (ctx.is_early_timestamp(retargeting_interval))
+
+    // Pass this header stamp, not ctx.timestamp, into the BIP54 early check.
+    // A stale safe ctx.timestamp must not skip an attack header stamp.
+    if (ctx.is_early_timestamp(timestamp_, retargeting_interval))
         return error::early_timestamp;
-    if (bip54_timespan && ctx.is_negative_timespan(retargeting_interval))
+
+    // Pass this header stamp into the BIP54 negative timespan check too.
+    if (bip54_timespan && ctx.is_negative_timespan(timestamp_,
+        retargeting_interval))
         return error::negative_timespan;
 
     return error::block_success;
