@@ -459,6 +459,90 @@ BC_AUTO_TEST_CASE(header__accept__bip54_timespan_at_first__block_success)
     BC_REQUIRE_EQUAL(instance.accept(ctx, 2016), error::block_success);
 }
 
+// These two cases pin a bug. BIP54 must judge the header stamp field.
+// A safe looking ctx.timestamp must not hide an attack header stamp
+// for timewarp or for negative timespan.
+// ----------------------------------------------------------------------------
+
+BC_AUTO_TEST_CASE(
+    header__accept__bip54_timewarp_safe_ctx_attack_header__early_timestamp)
+{
+    // Parent block time used as the BIP54 timewarp floor base.
+    constexpr auto previous_block_time = 1'000'000u;
+
+    // Attack header stamp sits one second below the BIP54 timewarp floor.
+    // Floor is previous_block_time minus max_timewarp_bip54.
+    constexpr auto attack_header_stamp = possible_narrow_cast<uint32_t>(
+        previous_block_time - max_timewarp_bip54 - 1u);
+
+    // Header carries the attack stamp in its own timestamp field.
+    const header attack_header{
+        2,
+        hash_digest{},
+        hash_digest{},
+        attack_header_stamp,
+        0,
+        0 };
+
+    // Context timestamp equals previous_block_time so it looks safe.
+    // previous_timestamp also equals previous_block_time for the floor math.
+    // Height is 0 so this is a retarget height for interval 2016.
+    const context safe_looking_ctx{
+        flags::bip54_timewarp_rule,
+        previous_block_time,
+        0,
+        0,
+        0,
+        0,
+        previous_block_time };
+
+    // Current bug path reads ctx.timestamp not the header stamp.
+    // So accept does not return early_timestamp yet.
+    // The assertion documents the wrong outcome until the fix commit.
+    const auto accept_code = attack_header.accept(safe_looking_ctx, 2016);
+    BC_REQUIRE(accept_code !=
+        error::early_timestamp); // TODO: should be early_timestamp
+}
+
+BC_AUTO_TEST_CASE(
+    header__accept__bip54_timespan_safe_ctx_attack_header__negative_timespan)
+{
+    // First block time of the difficulty period.
+    constexpr auto period_first_stamp = 1'000u;
+
+    // Attack header stamp is one second before the period first stamp.
+    constexpr auto attack_header_stamp = period_first_stamp - 1u;
+
+    // Header carries the attack stamp in its own timestamp field.
+    const header attack_header{
+        2,
+        hash_digest{},
+        hash_digest{},
+        attack_header_stamp,
+        0,
+        0 };
+
+    // Context timestamp equals period_first_stamp so it looks safe.
+    // Height 2015 is the last height of a 2016 block period.
+    // retarget_timestamp equals period_first_stamp for the timespan check.
+    const context safe_looking_ctx{
+        flags::bip54_timespan_rule,
+        period_first_stamp,
+        0,
+        2015,
+        0,
+        0,
+        0,
+        period_first_stamp };
+
+    // Current bug path reads ctx.timestamp not the header stamp.
+    // So accept does not return negative_timespan yet.
+    // The assertion documents the wrong outcome until the fix commit.
+    const auto accept_code = attack_header.accept(safe_looking_ctx, 2016);
+    BC_REQUIRE(accept_code !=
+        error::negative_timespan); // TODO: should be negative_timespan
+}
+
 BC_AUTO_TEST_CASE(header__check__zero_bits__invalid_proof_of_work)
 {
     const settings settings(selection::mainnet);
